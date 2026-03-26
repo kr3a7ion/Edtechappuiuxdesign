@@ -1,7 +1,7 @@
 
-  # EdTech App UI/UX Design
+  # Codewithgideonmobile
 
-  This is a code bundle for EdTech App UI/UX Design. The original project is available at https://www.figma.com/design/2PgbeWDObqtOly9lsjfMGF/EdTech-App-UI-UX-Design.
+  This is a code bundle for Codewithgideonmobile. The original project is available at https://www.figma.com/design/2PgbeWDObqtOly9lsjfMGF/Codewithgideonmobile.
 
   ## Running the code
 
