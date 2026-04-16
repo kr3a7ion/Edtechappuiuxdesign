@@ -10,8 +10,10 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/states/app_state_widgets.dart';
+import '../catalog/models/course_model.dart';
 import '../cohorts/models/cohort_session_model.dart';
 import '../cohorts/presentation/session_status.dart';
+import '../community/state/community_notifications_provider.dart';
 import '../student/models/pending_payment_model.dart';
 import 'models/student_dashboard_snapshot.dart';
 import 'state/dashboard_provider.dart';
@@ -27,17 +29,22 @@ class DashboardScreen extends ConsumerWidget {
 
     return dashboardState.when(
       // Match the final layout with a shimmer shell so loading feels intentional.
-      loading: () => const SafeArea(child: _DashboardShimmer()),
-      error: (error, stackTrace) => SafeArea(
-        child: AppErrorState(
-          compact: true,
-          title: 'Dashboard unavailable',
-          message:
-              'We could not load your student dashboard right now. Please try again.',
-          onRetry: () => ref.refresh(dashboardSnapshotProvider),
+      loading: () => const DoubleBackToExitScope(
+        child: SafeArea(child: _DashboardShimmer()),
+      ),
+      error: (error, stackTrace) => DoubleBackToExitScope(
+        child: SafeArea(
+          child: AppErrorState(
+            compact: true,
+            title: 'Dashboard unavailable',
+            message:
+                'We could not load your student dashboard right now. Please try again.',
+            onRetry: () => ref.refresh(dashboardSnapshotProvider),
+          ),
         ),
       ),
-      data: (dashboard) => _DashboardContent(snapshot: dashboard),
+      data: (dashboard) =>
+          DoubleBackToExitScope(child: _DashboardContent(snapshot: dashboard)),
     );
   }
 }
@@ -164,17 +171,18 @@ class _DashboardContent extends ConsumerWidget {
   }
 }
 
-class _DashboardHeader extends StatelessWidget {
+class _DashboardHeader extends ConsumerWidget {
   const _DashboardHeader({required this.snapshot});
 
   final StudentDashboardSnapshot snapshot;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final initials = _initials(snapshot.profile.fullName);
     final greetingMood = _timeGreetingMood();
+    final unreadCountAsync = ref.watch(unreadMessagesCountProvider);
 
     return Row(
       children: [
@@ -242,6 +250,10 @@ class _DashboardHeader extends StatelessWidget {
         const Gap(12),
         _IconBubble(
           icon: PhosphorIconsRegular.bell,
+          badgeCount: unreadCountAsync.maybeWhen(
+            data: (count) => count,
+            orElse: () => 0,
+          ),
           // Messages is the closest real notification destination available now.
           onTap: () => context.push('/community/messages'),
         ),
@@ -641,18 +653,15 @@ class _SessionShelf extends StatelessWidget {
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.only(right: 4),
       child: Row(
         children: [
-          for (final session in sessions) ...[
+          for (var index = 0; index < sessions.length; index++) ...[
             _CourseCard(
-              title: session.title,
-              subtitle: 'Week ${session.week}',
-              footnote: _formatDateLabel(session),
-
-              topContent: _SessionCardArtwork(session: session),
-              onTap: () => context.push('/classes/${session.id}'),
+              session: sessions[index],
+              onTap: () => context.push('/classes/${sessions[index].id}'),
             ),
-            const Gap(14),
+            if (index != sessions.length - 1) const Gap(14),
           ],
         ],
       ),
@@ -720,7 +729,7 @@ class _CourseRoadmap extends StatelessWidget {
             ),
           const Gap(10),
           Text(
-            'Syllabus is stored on the course doc in the web app. Until Flutter carries that field, this uses a smart fallback outline.',
+            'This roadmap mirrors the path syllabus saved on the course from the web app, so each learner sees the right weekly outline.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: secondaryColor,
               height: 1.5,
@@ -817,7 +826,9 @@ class _PendingPaymentStrip extends StatelessWidget {
           const Gap(12),
           TextButton(
             onPressed: () => context.push(
-              isTopUp ? '/payment?mode=topup' : '/payment?mode=initial',
+              isTopUp
+                  ? '/payment?mode=topup&returnTo=%2Fdashboard'
+                  : '/payment?mode=initial&returnTo=%2Fdashboard',
             ),
             child: const Text('Continue'),
           ),
@@ -857,7 +868,8 @@ class _TopUpActionButton extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(22),
-          onTap: () => context.push('/payment?mode=topup'),
+          onTap: () =>
+              context.push('/payment?mode=topup&returnTo=%2Fdashboard'),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
             child: compact
@@ -943,76 +955,162 @@ class _TopUpActionHeader extends StatelessWidget {
 }
 
 class _CourseCard extends StatelessWidget {
-  const _CourseCard({
-    required this.title,
-    required this.subtitle,
-    required this.footnote,
-    required this.topContent,
-    required this.onTap,
-  });
+  const _CourseCard({required this.session, required this.onTap});
 
-  final String title;
-  final String subtitle;
-  final String footnote;
-  final Widget topContent;
+  final CohortSessionModel session;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final status = resolveSessionStatus(session);
+    final accent = _accentForStatus(status.actionState);
+    final actionLabel = _actionLabelForStatus(status.actionState);
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(28),
         child: Container(
-          width: 172,
-          padding: const EdgeInsets.all(12),
+          width: 224,
+          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: Theme.of(context).cardColor,
-            borderRadius: BorderRadius.circular(24),
+            color: isDark ? const Color(0xFF0E1728) : Colors.white,
+            borderRadius: BorderRadius.circular(28),
             border: Border.all(
               color: isDark
                   ? AppColors.darkBorder
-                  : AppColors.deepBlue.withValues(alpha: 0.06),
+                  : AppColors.deepBlue.withValues(alpha: 0.08),
             ),
             boxShadow: [
               BoxShadow(
                 color: (isDark ? Colors.black : AppColors.deepBlue).withValues(
-                  alpha: isDark ? 0.16 : 0.05,
+                  alpha: isDark ? 0.22 : 0.08,
                 ),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
+                blurRadius: 24,
+                offset: const Offset(0, 12),
               ),
             ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(18),
-                child: SizedBox(
-                  height: 110,
-                  width: double.infinity,
-                  child: topContent,
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      'Week ${session.week}',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: accent,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const Gap(8),
+                  Expanded(
+                    child: Text(
+                      status.statusLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: isDark
+                            ? AppColors.darkMutedForeground
+                            : AppColors.mutedForeground,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const Gap(12),
+              Container(
+                height: 124,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: accent.withValues(alpha: 0.12)),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(22),
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: _SessionCardArtwork(session: session),
+                      ),
+                      Positioned(
+                        top: 12,
+                        right: 12,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? const Color(
+                                    0xFF0F1B2F,
+                                  ).withValues(alpha: 0.92)
+                                : Colors.white.withValues(alpha: 0.94),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: accent.withValues(alpha: 0.16),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _iconForStatus(status.actionState),
+                                size: 14,
+                                color: accent,
+                              ),
+                              const Gap(6),
+                              Text(
+                                actionLabel,
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(
+                                      color: isDark
+                                          ? AppColors.darkForeground
+                                          : AppColors.deepBlueDark,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const Gap(12),
               Text(
-                title,
+                session.title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(
                   context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
-              const Gap(4),
+              const Gap(6),
               Row(
                 children: [
+                  Icon(Icons.schedule_rounded, size: 16, color: accent),
+                  const Gap(8),
                   Expanded(
                     child: Text(
-                      subtitle,
+                      _formatDateLabel(session),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: isDark
                             ? AppColors.darkMutedForeground
@@ -1022,15 +1120,36 @@ class _CourseCard extends StatelessWidget {
                   ),
                 ],
               ),
-              const Gap(6),
-              Text(
-                footnote,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              const Gap(10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
                   color: isDark
-                      ? AppColors.darkMutedForeground
-                      : AppColors.mutedForeground,
+                      ? accent.withValues(alpha: 0.14)
+                      : accent.withValues(alpha: 0.09),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        status.scheduleLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(
+                              color: accent,
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
+                    ),
+                    const Gap(10),
+                    Icon(Icons.arrow_outward_rounded, size: 18, color: accent),
+                  ],
                 ),
               ),
             ],
@@ -1038,6 +1157,36 @@ class _CourseCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Color _accentForStatus(SessionActionState state) {
+    return switch (state) {
+      SessionActionState.joinLive => AppColors.teal,
+      SessionActionState.startsSoon => AppColors.deepBlue,
+      SessionActionState.watchRecording => AppColors.orange,
+      SessionActionState.awaitingRecording => AppColors.orangeLight,
+      SessionActionState.awaitingJoinLink => AppColors.deepBlueLight,
+    };
+  }
+
+  IconData _iconForStatus(SessionActionState state) {
+    return switch (state) {
+      SessionActionState.joinLive => Icons.podcasts_rounded,
+      SessionActionState.startsSoon => Icons.schedule_send_rounded,
+      SessionActionState.watchRecording => Icons.play_circle_fill_rounded,
+      SessionActionState.awaitingRecording => Icons.movie_creation_outlined,
+      SessionActionState.awaitingJoinLink => Icons.link_rounded,
+    };
+  }
+
+  String _actionLabelForStatus(SessionActionState state) {
+    return switch (state) {
+      SessionActionState.joinLive => 'Join live',
+      SessionActionState.startsSoon => 'Starts soon',
+      SessionActionState.watchRecording => 'Watch now',
+      SessionActionState.awaitingRecording => 'Recording soon',
+      SessionActionState.awaitingJoinLink => 'Open class',
+    };
   }
 }
 
@@ -1286,10 +1435,15 @@ class _Badge extends StatelessWidget {
 }
 
 class _IconBubble extends StatelessWidget {
-  const _IconBubble({required this.icon, required this.onTap});
+  const _IconBubble({
+    required this.icon,
+    required this.onTap,
+    this.badgeCount = 0,
+  });
 
   final IconData icon;
   final VoidCallback onTap;
+  final int badgeCount;
 
   @override
   Widget build(BuildContext context) {
@@ -1300,23 +1454,55 @@ class _IconBubble extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
-        child: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: Theme.of(context).cardColor,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isDark
-                  ? AppColors.darkBorder
-                  : AppColors.deepBlue.withValues(alpha: 0.08),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isDark
+                      ? AppColors.darkBorder
+                      : AppColors.deepBlue.withValues(alpha: 0.08),
+                ),
+              ),
+              child: Icon(
+                icon,
+                size: 20,
+                color: isDark ? AppColors.orangeLight : AppColors.deepBlue,
+              ),
             ),
-          ),
-          child: Icon(
-            icon,
-            size: 20,
-            color: isDark ? AppColors.orangeLight : AppColors.deepBlue,
-          ),
+            if (badgeCount > 0)
+              Positioned(
+                right: -4,
+                top: -4,
+                child: Container(
+                  constraints: const BoxConstraints(
+                    minWidth: 18,
+                    minHeight: 18,
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 2,
+                  ),
+                  decoration: const BoxDecoration(
+                    color: AppColors.orange,
+                    borderRadius: BorderRadius.all(Radius.circular(999)),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    badgeCount > 99 ? '99+' : '$badgeCount',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -1566,31 +1752,40 @@ class _ShimmerCourseCard extends StatelessWidget {
 
 class _RoadmapItem {
   const _RoadmapItem({
+    required this.weekLabel,
     required this.title,
     required this.description,
+    required this.topics,
     required this.icon,
     required this.tint,
     required this.isCurrent,
+    required this.isUnlocked,
+    required this.statusLabel,
   });
 
+  final String weekLabel;
   final String title;
   final String description;
+  final List<String> topics;
   final IconData icon;
   final Color tint;
   final bool isCurrent;
+  final bool isUnlocked;
+  final String statusLabel;
 }
 
 List<_RoadmapItem> _buildSyllabusItems(StudentDashboardSnapshot snapshot) {
-  final fallbackTitles = _dummySyllabusTitles(snapshot);
+  final syllabusItems = _resolvedSyllabusItems(snapshot);
   final unlockedWeeks = snapshot.profile.weeksToCommit.clamp(
     0,
-    fallbackTitles.length,
+    syllabusItems.length,
   );
 
-  // The web app keeps syllabus on `course.syllabus`; Flutter can swap this
-  // fallback out once that field is added to the course model.
-  return List<_RoadmapItem>.generate(fallbackTitles.length, (index) {
-    final weekNumber = index + 1;
+  return List<_RoadmapItem>.generate(syllabusItems.length, (index) {
+    final week = syllabusItems[index];
+    final weekNumber = week.week;
+    final isUnlocked = weekNumber <= unlockedWeeks;
+    final isCurrent = weekNumber == (unlockedWeeks == 0 ? 1 : unlockedWeeks);
     final tint = switch (index % 4) {
       0 => AppColors.deepBlue,
       1 => AppColors.teal,
@@ -1599,15 +1794,40 @@ List<_RoadmapItem> _buildSyllabusItems(StudentDashboardSnapshot snapshot) {
     };
 
     return _RoadmapItem(
-      title: 'Week $weekNumber',
-      description: fallbackTitles[index],
-      icon: weekNumber <= unlockedWeeks
+      weekLabel: 'Week $weekNumber',
+      title: week.title.trim().isNotEmpty ? week.title : 'Week $weekNumber',
+      description: week.topics.isNotEmpty
+          ? '${week.topics.length} topic${week.topics.length == 1 ? '' : 's'}'
+          : 'Weekly learning milestone',
+      topics: week.topics,
+      icon: isUnlocked
           ? Icons.check_circle_rounded
           : Icons.radio_button_unchecked_rounded,
       tint: tint,
-      isCurrent: weekNumber == (unlockedWeeks == 0 ? 1 : unlockedWeeks),
+      isCurrent: isCurrent,
+      isUnlocked: isUnlocked,
+      statusLabel: isUnlocked
+          ? 'Unlocked'
+          : isCurrent
+          ? 'Current'
+          : 'Locked',
     );
   });
+}
+
+List<CourseSyllabusWeek> _resolvedSyllabusItems(
+  StudentDashboardSnapshot snapshot,
+) {
+  final syllabusItems = snapshot.course.syllabus;
+  if (syllabusItems.isEmpty) {
+    return _dummySyllabusItems(snapshot);
+  }
+
+  if (syllabusItems.length == 1 && snapshot.totalProgramWeeks > 1) {
+    return _dummySyllabusItems(snapshot);
+  }
+
+  return syllabusItems;
 }
 
 class _RoadmapStep extends StatelessWidget {
@@ -1658,13 +1878,47 @@ class _RoadmapStep extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  item.title,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: item.isCurrent ? item.tint : null,
+                  item.weekLabel,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: item.tint,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.3,
                   ),
                 ),
                 const Gap(4),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        item.title,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: item.isCurrent ? item.tint : null,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: item.tint.withValues(
+                          alpha: item.isUnlocked ? 0.14 : 0.08,
+                        ),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        item.statusLabel,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: item.tint,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const Gap(6),
                 Text(
                   item.description,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -1672,6 +1926,54 @@ class _RoadmapStep extends StatelessWidget {
                     height: 1.5,
                   ),
                 ),
+                if (item.topics.isNotEmpty) ...[
+                  const Gap(10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: item.topics
+                        .map(
+                          (topic) => Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: item.tint.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 6,
+                                  height: 6,
+                                  decoration: BoxDecoration(
+                                    color: item.tint,
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                ),
+                                const Gap(8),
+                                Flexible(
+                                  child: Text(
+                                    topic,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelSmall
+                                        ?.copyWith(
+                                          color: item.tint,
+                                          fontWeight: FontWeight.w700,
+                                          height: 1.4,
+                                        ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1703,39 +2005,200 @@ String _formatNaira(int amount) {
   return '₦${NumberFormat.decimalPattern().format(amount)}';
 }
 
-List<String> _dummySyllabusTitles(StudentDashboardSnapshot snapshot) {
+List<CourseSyllabusWeek> _dummySyllabusItems(
+  StudentDashboardSnapshot snapshot,
+) {
   final title = snapshot.course.title.toLowerCase();
-  final weeks = snapshot.totalProgramWeeks.clamp(4, 8);
+  final weeks = snapshot.totalProgramWeeks.clamp(4, 12);
 
   if (title.contains('flutter')) {
-    return [
-      'Flutter setup and Dart foundations',
-      'Layouts, widgets, and adaptive UI',
-      'State management with Riverpod',
-      'Routing, forms, and validation',
-      'Firebase auth and Firestore integration',
-      'Animations, polish, and accessibility',
-      'Testing, optimization, and release prep',
-      'Capstone app delivery',
+    return const [
+      CourseSyllabusWeek(
+        week: 1,
+        title: 'Weeks 1–2: Foundations',
+        topics: [
+          'Flutter overview & setup',
+          'Dart fundamentals',
+          'Widgets & UI basics',
+          'Stateless vs Stateful widgets',
+        ],
+      ),
+      CourseSyllabusWeek(
+        week: 3,
+        title: 'Weeks 3–4: UI, Input & Navigation',
+        topics: [
+          'Layout system',
+          'Forms & validation',
+          'Navigation & data passing',
+          'Local state with setState',
+        ],
+      ),
+      CourseSyllabusWeek(
+        week: 5,
+        title: 'Weeks 5–6: Backend & Authentication',
+        topics: [
+          'Firebase setup',
+          'Authentication',
+          'Firestore basics',
+          'Real-time data',
+        ],
+      ),
+      CourseSyllabusWeek(
+        week: 7,
+        title: 'Weeks 7–8: State Management & Architecture',
+        topics: [
+          'Why state management',
+          'Structured state flow',
+          'Refactoring apps',
+          'Cleaner architecture',
+        ],
+      ),
+      CourseSyllabusWeek(
+        week: 9,
+        title: 'Weeks 9–10: APIs & Local Storage',
+        topics: [
+          'REST APIs',
+          'HTTP requests',
+          'Error handling',
+          'Hive local storage',
+        ],
+      ),
+      CourseSyllabusWeek(
+        week: 11,
+        title: 'Weeks 11–12: Deployment & Final Project',
+        topics: [
+          'Debugging & optimization',
+          'Android builds',
+          'Play Store requirements',
+          'Final app build & presentation',
+        ],
+      ),
     ].take(weeks).toList();
   }
 
-  if (title.contains('ui') ||
-      title.contains('ux') ||
-      title.contains('design')) {
-    return [
-      'Design principles and visual hierarchy',
-      'Research, personas, and user flows',
-      'Wireframes and information architecture',
-      'Color, typography, and component systems',
-      'Interactive prototyping and testing',
-      'Design handoff and portfolio polish',
+  if (title.contains('wordpress') || title.contains('web')) {
+    return const [
+      CourseSyllabusWeek(
+        week: 1,
+        title: 'Week 1: WordPress Foundations',
+        topics: [
+          'What is WordPress',
+          'WordPress.com vs WordPress.org',
+          'Domain & hosting basics',
+          'Dashboard overview',
+        ],
+      ),
+      CourseSyllabusWeek(
+        week: 2,
+        title: 'Week 2: Themes & Site Structure',
+        topics: [
+          'Choosing & installing themes',
+          'Customizing site identity',
+          'Pages, menus & navigation',
+          'Permalinks & settings',
+        ],
+      ),
+      CourseSyllabusWeek(
+        week: 3,
+        title: 'Week 3: Content Creation & Blogging',
+        topics: [
+          'Posts vs Pages',
+          'Blogging basics',
+          'Media handling',
+          'Categories, tags & metadata',
+        ],
+      ),
+      CourseSyllabusWeek(
+        week: 4,
+        title: 'Week 4: Plugins & Functionality',
+        topics: [
+          'Essential plugins',
+          'Contact forms',
+          'SEO basics',
+          'Security & backups',
+        ],
+      ),
+      CourseSyllabusWeek(
+        week: 5,
+        title: 'Week 5: Business Websites',
+        topics: [
+          'Landing pages',
+          'Service websites',
+          'Portfolio & company sites',
+          'Client-ready structure',
+        ],
+      ),
+      CourseSyllabusWeek(
+        week: 6,
+        title: 'Week 6: Deployment & Monetization',
+        topics: [
+          'Going live',
+          'Maintenance basics',
+          'Pricing client jobs',
+          'Final website project',
+        ],
+      ),
     ].take(weeks).toList();
   }
 
-  return List<String>.generate(
+  if (title.contains('ai')) {
+    return const [
+      CourseSyllabusWeek(
+        week: 1,
+        title: 'Module 1: AI for Developers',
+        topics: [
+          'Prompting basics',
+          'Asking good technical questions',
+          'Verification mindset',
+        ],
+      ),
+      CourseSyllabusWeek(
+        week: 2,
+        title: 'Module 2: AI for Coding & Debugging',
+        topics: ['Explaining errors', 'Refactoring code', 'Logic comparison'],
+      ),
+      CourseSyllabusWeek(
+        week: 3,
+        title: 'Module 3: AI for UI & UX',
+        topics: [
+          'Layout suggestions',
+          'Color & design assistance',
+          'Accessibility checks',
+        ],
+      ),
+      CourseSyllabusWeek(
+        week: 4,
+        title: 'Module 4: AI for Project Planning',
+        topics: [
+          'Breaking features into tasks',
+          'Estimating scope',
+          'Documentation help',
+        ],
+      ),
+      CourseSyllabusWeek(
+        week: 5,
+        title: 'Module 5: AI for Content & Deployment',
+        topics: ['App descriptions', 'Website copy', 'Release notes'],
+      ),
+      CourseSyllabusWeek(
+        week: 6,
+        title: 'Module 6: Ethics & Responsible Use',
+        topics: [
+          'Avoiding dependency',
+          'Verification mindset',
+          'Learning vs copying',
+        ],
+      ),
+    ].take(weeks).toList();
+  }
+
+  return List<CourseSyllabusWeek>.generate(
     weeks,
-    (index) => 'Core syllabus module ${index + 1}',
+    (index) => CourseSyllabusWeek(
+      week: index + 1,
+      title: 'Week ${index + 1}',
+      topics: ['Core syllabus module ${index + 1}'],
+    ),
   );
 }
 

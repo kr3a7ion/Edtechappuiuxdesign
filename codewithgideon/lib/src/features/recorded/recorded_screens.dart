@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
@@ -89,6 +90,7 @@ class _ProtectedRecordedPlayerState extends State<_ProtectedRecordedPlayer> {
   YoutubePlayerController? _controller;
   bool _isLoading = true;
   bool _isPlayable = true;
+  bool _isFullscreen = false;
 
   @override
   void initState() {
@@ -141,59 +143,140 @@ class _ProtectedRecordedPlayerState extends State<_ProtectedRecordedPlayer> {
     final status = resolveSessionStatus(widget.session);
     final controller = _controller;
 
+    final player = controller == null
+        ? null
+        : YoutubePlayer(
+            controller: controller,
+            showVideoProgressIndicator: true,
+            progressIndicatorColor: AppColors.teal,
+            progressColors: ProgressBarColors(
+              playedColor: AppColors.teal,
+              handleColor: AppColors.tealLight,
+              bufferedColor: Colors.grey.shade400,
+              backgroundColor: Colors.grey.shade600,
+            ),
+            onReady: () {
+              if (mounted) {
+                setState(() => _isLoading = false);
+              }
+            },
+          );
+
+    if (player == null) {
+      return _RecordedPlayerLayout(
+        session: widget.session,
+        status: status,
+        isDark: isDark,
+        isPlayable: _isPlayable,
+        isLoading: _isLoading,
+        player: null,
+      );
+    }
+
+    return YoutubePlayerBuilder(
+      onEnterFullScreen: () {
+        if (!mounted) return;
+        setState(() => _isFullscreen = true);
+      },
+      onExitFullScreen: () {
+        SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+        if (!mounted) return;
+        setState(() => _isFullscreen = false);
+      },
+      player: player,
+      builder: (context, playerWidget) {
+        return _RecordedPlayerLayout(
+          session: widget.session,
+          status: status,
+          isDark: isDark,
+          isPlayable: _isPlayable,
+          isLoading: _isLoading,
+          player: playerWidget,
+          isFullscreen: _isFullscreen,
+        );
+      },
+    );
+  }
+}
+
+class _RecordedPlayerLayout extends StatelessWidget {
+  const _RecordedPlayerLayout({
+    required this.session,
+    required this.status,
+    required this.isDark,
+    required this.isPlayable,
+    required this.isLoading,
+    required this.player,
+    this.isFullscreen = false,
+  });
+
+  final CohortSessionModel session;
+  final SessionStatusSnapshot status;
+  final bool isDark;
+  final bool isPlayable;
+  final bool isLoading;
+  final Widget? player;
+  final bool isFullscreen;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return SafeArea(
-      top: false,
+      top: !isFullscreen,
       bottom: false,
       child: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(22, 30, 22, 14),
-            child: Row(
-              children: [
-                _OverlayActionButton(
-                  icon: PhosphorIconsBold.arrowLeft,
-                  onTap: () => context.pop(),
-                  isDark: isDark,
-                ),
-                const Gap(12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Recorded Session',
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          color: isDark ? Colors.white70 : Colors.black54,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const Gap(2),
-                      Text(
-                        widget.session.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          color: isDark ? Colors.white : Colors.black,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
+          if (!isFullscreen)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 30, 22, 14),
+              child: Row(
+                children: [
+                  _OverlayActionButton(
+                    icon: PhosphorIconsBold.arrowLeft,
+                    onTap: () => context.pop(),
+                    isDark: isDark,
                   ),
-                ),
-                _OverlayActionButton(
-                  icon: PhosphorIconsBold.user,
-                  onTap: () => context.push('/community/messages'),
-                  isDark: isDark,
-                ),
-                const Gap(10),
-                _OverlayActionButton(
-                  icon: PhosphorIconsBold.folderOpen,
-                  onTap: () => context.push('/resources'),
-                  isDark: isDark,
-                ),
-              ],
+                  const Gap(12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Recorded Session',
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            color: isDark ? Colors.white70 : Colors.black54,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const Gap(2),
+                        Text(
+                          session.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            color: isDark ? Colors.white : Colors.black,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  _OverlayActionButton(
+                    icon: PhosphorIconsBold.user,
+                    onTap: () => context.push('/community/messages'),
+                    isDark: isDark,
+                  ),
+                  const Gap(10),
+                  _OverlayActionButton(
+                    icon: PhosphorIconsBold.folderOpen,
+                    onTap: () => context.push('/resources'),
+                    isDark: isDark,
+                  ),
+                ],
+              ),
             ),
-          ),
           AspectRatio(
             aspectRatio: 16 / 9,
             child: Stack(
@@ -204,29 +287,14 @@ class _ProtectedRecordedPlayerState extends State<_ProtectedRecordedPlayer> {
                       ? const Color(0xFF1A1A1A)
                       : Colors.grey.shade200,
                 ),
-                if (controller != null)
-                  YoutubePlayer(
-                    controller: controller,
-                    showVideoProgressIndicator: true,
-                    progressIndicatorColor: AppColors.teal,
-                    progressColors: ProgressBarColors(
-                      playedColor: AppColors.teal,
-                      handleColor: AppColors.tealLight,
-                      bufferedColor: Colors.grey.shade400,
-                      backgroundColor: Colors.grey.shade600,
-                    ),
-                    onReady: () {
-                      if (mounted) {
-                        setState(() => _isLoading = false);
-                      }
-                    },
-                  )
+                if (player != null)
+                  player!
                 else
                   Center(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: Text(
-                        _isPlayable
+                        isPlayable
                             ? 'Preparing secure playback...'
                             : 'This recording is not in a supported YouTube format yet.',
                         textAlign: TextAlign.center,
@@ -237,7 +305,7 @@ class _ProtectedRecordedPlayerState extends State<_ProtectedRecordedPlayer> {
                       ),
                     ),
                   ),
-                if (_isLoading)
+                if (isLoading)
                   Container(
                     color: isDark
                         ? const Color(0xFF1A1A1A)
@@ -265,87 +333,87 @@ class _ProtectedRecordedPlayerState extends State<_ProtectedRecordedPlayer> {
               ],
             ),
           ),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(22, 24, 22, 28),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      _PlayerPill(
-                        icon: PhosphorIconsFill.playCircle,
-                        label: status.statusLabel,
-                        color: AppColors.teal,
-                      ),
-                      const Gap(10),
-                      _PlayerPill(
-                        icon: PhosphorIconsFill.calendarDots,
-                        label: status.scheduleLabel,
-                        color: AppColors.deepBlueLight,
-                      ),
-                    ],
-                  ),
-                  const Gap(18),
-                  Text(
-                    widget.session.pathTitle,
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      color: AppColors.orangeLight,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const Gap(6),
-                  Text(
-                    widget.session.title,
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      color: isDark ? Colors.white : Colors.black,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const Gap(10),
-                  Text(
-                    widget.session.notes.isEmpty
-                        ? 'Recording is available now. Class notes will appear here when they are published.'
-                        : widget.session.notes,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: isDark ? Colors.white70 : Colors.black54,
-                      height: 1.65,
-                    ),
-                  ),
-                  const Gap(18),
-                  AdaptiveWrap(
-                    minItemWidth: 150,
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      _RecordedAction(
-                        icon: PhosphorIconsBold.checkCircle,
-                        title: 'Mark Complete',
-                        color: Colors.green,
-                        onTap: () => showAppSnackBar(
-                          context,
-                          'Completion tracking can be connected next.',
+          if (!isFullscreen)
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(22, 24, 22, 28),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        _PlayerPill(
+                          icon: PhosphorIconsFill.playCircle,
+                          label: status.statusLabel,
+                          color: AppColors.teal,
                         ),
+                        const Gap(10),
+                        _PlayerPill(
+                          icon: PhosphorIconsFill.calendarDots,
+                          label: status.scheduleLabel,
+                          color: AppColors.deepBlueLight,
+                        ),
+                      ],
+                    ),
+                    const Gap(18),
+                    Text(
+                      session.pathTitle,
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: AppColors.orangeLight,
+                        fontWeight: FontWeight.w700,
                       ),
-                      _RecordedAction(
-                        icon: PhosphorIconsBold.user,
-                        title: 'Ask Mentor',
-                        color: AppColors.purple,
-                        onTap: () =>
-                            context.push('/ai-tutor/${widget.session.id}'),
+                    ),
+                    const Gap(6),
+                    Text(
+                      session.title,
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        color: isDark ? Colors.white : Colors.black,
+                        fontWeight: FontWeight.w800,
                       ),
-                      _RecordedAction(
-                        icon: PhosphorIconsBold.folderOpen,
-                        title: 'Resources',
-                        color: Colors.blue,
-                        onTap: () => context.push('/resources'),
+                    ),
+                    const Gap(10),
+                    Text(
+                      session.notes.isEmpty
+                          ? 'Recording is available now. Class notes will appear here when they are published.'
+                          : session.notes,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: isDark ? Colors.white70 : Colors.black54,
+                        height: 1.65,
                       ),
-                    ],
-                  ),
-                ],
+                    ),
+                    const Gap(18),
+                    AdaptiveWrap(
+                      minItemWidth: 150,
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        _RecordedAction(
+                          icon: PhosphorIconsBold.checkCircle,
+                          title: 'Mark Complete',
+                          color: Colors.green,
+                          onTap: () => showAppSnackBar(
+                            context,
+                            'Completion tracking can be connected next.',
+                          ),
+                        ),
+                        _RecordedAction(
+                          icon: PhosphorIconsBold.user,
+                          title: 'Ask Mentor',
+                          color: AppColors.purple,
+                          onTap: () => context.push('/ai-tutor/${session.id}'),
+                        ),
+                        _RecordedAction(
+                          icon: PhosphorIconsBold.folderOpen,
+                          title: 'Resources',
+                          color: Colors.blue,
+                          onTap: () => context.push('/resources'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -734,7 +802,7 @@ class _AiTutorScreenState extends ConsumerState<AiTutorScreen> {
                   colors: [AppColors.purple, Color(0xFF6D28D9)],
                 ),
               ),
-                  padding: const EdgeInsets.fromLTRB(22, 30, 22, 20),
+              padding: const EdgeInsets.fromLTRB(22, 30, 22, 20),
               child: PremiumPageHeader(
                 title: 'AI Tutor',
                 subtitle: 'Always ready to help',

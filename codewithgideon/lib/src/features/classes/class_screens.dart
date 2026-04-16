@@ -25,21 +25,25 @@ class ClassListScreen extends ConsumerWidget {
     final dashboardState = ref.watch(dashboardSnapshotProvider);
 
     return dashboardState.when(
-      loading: () => const SafeArea(
-        top: false,
-        child: AppLoadingState(
-          compact: true,
-          title: 'Loading your classes...',
-          message: 'Pulling in your latest published cohort sessions.',
+      loading: () => const DoubleBackToExitScope(
+        child: SafeArea(
+          top: false,
+          child: AppLoadingState(
+            compact: true,
+            title: 'Loading your classes...',
+            message: 'Pulling in your latest published cohort sessions.',
+          ),
         ),
       ),
-      error: (error, _) => SafeArea(
-        top: false,
-        child: AppErrorState(
-          compact: true,
-          title: 'Classes unavailable',
-          message: 'We could not load your class schedule right now.',
-          onRetry: () => ref.refresh(dashboardSnapshotProvider),
+      error: (error, _) => DoubleBackToExitScope(
+        child: SafeArea(
+          top: false,
+          child: AppErrorState(
+            compact: true,
+            title: 'Classes unavailable',
+            message: 'We could not load your class schedule right now.',
+            onRetry: () => ref.refresh(dashboardSnapshotProvider),
+          ),
         ),
       ),
       data: (dashboard) {
@@ -69,145 +73,154 @@ class ClassListScreen extends ConsumerWidget {
           return tabMatches && searchMatches;
         }).toList();
 
-        return SafeArea(
-          top: false,
-          bottom: false,
-          child: CustomScrollView(
-            slivers: [
-              SliverToBoxAdapter(
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(22, 30, 22, 14),
+        return DoubleBackToExitScope(
+          child: SafeArea(
+            top: false,
+            bottom: false,
+            child: CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(
                   child: Container(
-                    padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF0E2348), Color(0xFF1F437C)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(32),
-                      boxShadow: AppShadows.premium,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const PremiumPageHeader(
-                          title: 'Classes',
-                          subtitle:
-                              'Stay on top of live sessions, upcoming lessons, and premium replay access from one polished schedule.',
-                          onDark: true,
+                    padding: const EdgeInsets.fromLTRB(22, 30, 22, 14),
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF0E2348), Color(0xFF1F437C)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         ),
-                        const Gap(18),
-                        AdaptiveWrap(
-                          minItemWidth: 110,
-                          spacing: 10,
-                          runSpacing: 10,
-                          children: [
-                            _OverviewStatChip(
-                              icon: PhosphorIconsDuotone.videoCamera,
-                              label: 'Live',
-                              value: '$liveCount',
-                              tint: AppColors.teal,
-                              onDark: true,
-                            ),
-                            _OverviewStatChip(
-                              icon: PhosphorIconsDuotone.clockCountdown,
-                              label: 'Upcoming',
-                              value:
-                                  '${allSessions.where((item) => item.startsAt.isAfter(now)).length}',
-                              tint: AppColors.tealLight,
-                              onDark: true,
-                            ),
-                            _OverviewStatChip(
-                              icon: PhosphorIconsDuotone.playCircle,
-                              label: 'Recordings',
-                              value: '$recordingCount',
-                              tint: AppColors.orangeLight,
-                              onDark: true,
-                            ),
-                          ],
+                        borderRadius: BorderRadius.circular(32),
+                        boxShadow: AppShadows.premium,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const PremiumPageHeader(
+                            title: 'Classes',
+                            subtitle:
+                                'Stay on top of live sessions, upcoming lessons, and premium replay access from one polished schedule.',
+                            onDark: true,
+                          ),
+                          const Gap(18),
+                          AdaptiveWrap(
+                            minItemWidth: 110,
+                            spacing: 10,
+                            runSpacing: 10,
+                            children: [
+                              _OverviewStatChip(
+                                icon: PhosphorIconsDuotone.videoCamera,
+                                label: 'Live',
+                                value: '$liveCount',
+                                tint: AppColors.teal,
+                                onDark: true,
+                              ),
+                              _OverviewStatChip(
+                                icon: PhosphorIconsDuotone.clockCountdown,
+                                label: 'Upcoming',
+                                value:
+                                    '${allSessions.where((item) => item.startsAt.isAfter(now)).length}',
+                                tint: AppColors.tealLight,
+                                onDark: true,
+                              ),
+                              _OverviewStatChip(
+                                icon: PhosphorIconsDuotone.playCircle,
+                                label: 'Recordings',
+                                value: '$recordingCount',
+                                tint: AppColors.orangeLight,
+                                onDark: true,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.fromLTRB(22, 14, 22, 6),
+                    child: Row(
+                      children: [
+                        _ClassTabChip(
+                          label: 'Upcoming',
+                          active: activeTab == ClassTab.upcoming,
+                          onTap: () =>
+                              ref.read(classTabProvider.notifier).state =
+                                  ClassTab.upcoming,
+                        ),
+                        const Gap(10),
+                        _ClassTabChip(
+                          label: 'Live',
+                          active: activeTab == ClassTab.live,
+                          badge: allSessions
+                              .where((item) => item.isLive(now))
+                              .length,
+                          onTap: () =>
+                              ref.read(classTabProvider.notifier).state =
+                                  ClassTab.live,
+                        ),
+                        const Gap(10),
+                        _ClassTabChip(
+                          label: 'Completed',
+                          active: activeTab == ClassTab.completed,
+                          onTap: () =>
+                              ref.read(classTabProvider.notifier).state =
+                                  ClassTab.completed,
                         ),
                       ],
                     ),
                   ),
                 ),
-              ),
-              SliverToBoxAdapter(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.fromLTRB(22, 14, 22, 6),
-                  child: Row(
-                    children: [
-                      _ClassTabChip(
-                        label: 'Upcoming',
-                        active: activeTab == ClassTab.upcoming,
-                        onTap: () => ref.read(classTabProvider.notifier).state =
-                            ClassTab.upcoming,
-                      ),
-                      const Gap(10),
-                      _ClassTabChip(
-                        label: 'Live',
-                        active: activeTab == ClassTab.live,
-                        badge: allSessions
-                            .where((item) => item.isLive(now))
-                            .length,
-                        onTap: () => ref.read(classTabProvider.notifier).state =
-                            ClassTab.live,
-                      ),
-                      const Gap(10),
-                      _ClassTabChip(
-                        label: 'Completed',
-                        active: activeTab == ClassTab.completed,
-                        onTap: () => ref.read(classTabProvider.notifier).state =
-                            ClassTab.completed,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(22, 6, 22, 130),
-                sliver: filtered.isEmpty
-                    ? SliverToBoxAdapter(
-                        child: AppEmptyState(
-                          title: allSessions.isEmpty
-                              ? 'No classes available yet'
-                              : 'No classes match this view',
-                          message: allSessions.isEmpty
-                              ? 'Your dashboard is live, but no published sessions have been unlocked in Firestore yet.'
-                              : 'Try another search or switch between upcoming, live, and completed.',
-                          icon: Icons.event_busy_outlined,
-                          action: AppButton(
-                            label: 'Reset Filters',
-                            expanded: false,
-                            onPressed: () {
-                              ref.read(classSearchProvider.notifier).state = '';
-                              ref.read(classTabProvider.notifier).state =
-                                  ClassTab.upcoming;
-                            },
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(22, 6, 22, 130),
+                  sliver: filtered.isEmpty
+                      ? SliverToBoxAdapter(
+                          child: AppEmptyState(
+                            title: allSessions.isEmpty
+                                ? 'No classes available yet'
+                                : 'No classes match this view',
+                            message: allSessions.isEmpty
+                                ? 'Your dashboard is live, but no published sessions have been unlocked in Firestore yet.'
+                                : 'Try another search or switch between upcoming, live, and completed.',
+                            icon: Icons.event_busy_outlined,
+                            action: AppButton(
+                              label: 'Reset Filters',
+                              expanded: false,
+                              onPressed: () {
+                                ref.read(classSearchProvider.notifier).state =
+                                    '';
+                                ref.read(classTabProvider.notifier).state =
+                                    ClassTab.upcoming;
+                              },
+                            ),
                           ),
+                        )
+                      : SliverList(
+                          delegate: SliverChildBuilderDelegate((
+                            context,
+                            index,
+                          ) {
+                            final session = filtered[index];
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child:
+                                  _ClassListCard(
+                                        session: session,
+                                        onTap: () => context.push(
+                                          '/classes/${session.id}',
+                                        ),
+                                      )
+                                      .animate()
+                                      .fadeIn(delay: (index * 50).ms)
+                                      .slideY(begin: 0.08),
+                            );
+                          }, childCount: filtered.length),
                         ),
-                      )
-                    : SliverList(
-                        delegate: SliverChildBuilderDelegate((context, index) {
-                          final session = filtered[index];
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child:
-                                _ClassListCard(
-                                      session: session,
-                                      onTap: () => context.push(
-                                        '/classes/${session.id}',
-                                      ),
-                                    )
-                                    .animate()
-                                    .fadeIn(delay: (index * 50).ms)
-                                    .slideY(begin: 0.08),
-                          );
-                        }, childCount: filtered.length),
-                      ),
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -422,14 +435,12 @@ class _ClassListCard extends StatelessWidget {
             const Gap(10),
             Text(
               session.title,
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: Theme.of(context).brightness == Brightness.dark
-                        ? AppColors.darkForeground
-                        : AppColors.deepBlueDark,
-                  ),
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? AppColors.darkForeground
+                    : AppColors.deepBlueDark,
+              ),
             ),
             const Gap(8),
             Text(
@@ -734,12 +745,10 @@ class _OverviewStatChip extends StatelessWidget {
             children: [
               Text(
                 value,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: onDark ? Colors.white : null,
-                    ),
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: onDark ? Colors.white : null,
+                ),
               ),
               Text(
                 label,

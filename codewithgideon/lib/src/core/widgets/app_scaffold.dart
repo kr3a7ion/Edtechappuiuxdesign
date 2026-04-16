@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../state/app_providers.dart';
 import '../theme/app_theme.dart';
+import '../../features/community/state/community_notifications_provider.dart';
 import 'bottom_nav.dart';
 
 class PhoneViewport extends StatelessWidget {
@@ -116,6 +117,7 @@ class _MainNavigationShellState extends ConsumerState<MainNavigationShell> {
   @override
   Widget build(BuildContext context) {
     ref.watch(authControllerProvider);
+    ref.watch(unreadMessagesCountProvider);
     _preloadIfNeeded();
 
     return AppScreen(

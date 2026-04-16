@@ -4,12 +4,15 @@
     <!-- Android expects a drawable here, so the splash color is wrapped in a shape. -->
     <item>
         <shape android:shape="rectangle">
-            <solid android:color="#F4F7FB" />
+            <solid android:color="#08162B" />
         </shape>
     </item>
-    <item>
+    <item
+        android:width="220dp"
+        android:height="220dp"
+        android:gravity="center">
         <bitmap
             android:gravity="center"
-            android:src="@mipmap/ic_launcher" />
+            android:src="@drawable/launch_logo" />
     </item>
 </layer-list>

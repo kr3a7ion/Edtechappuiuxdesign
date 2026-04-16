@@ -34,6 +34,8 @@ void main() {
                   fullName: 'Gideon Student',
                   email: 'gideon@example.com',
                   phone: '+234 803 000 1122',
+                  ageRange: '18-24',
+                  gender: 'Prefer not to say',
                   pathTitle: 'Flutter & Mobile App Development',
                   pathId: 'flutter-mobile',
                   courseId: 'course_flutter_mobile',
@@ -57,6 +59,7 @@ void main() {
                   pricePerWeek: 10000,
                   priceLabel: 'N10,000 / week',
                   isActive: true,
+                  syllabus: [],
                 ),
                 activeCohort: const ActiveCohortModel(
                   pathId: 'flutter-mobile',

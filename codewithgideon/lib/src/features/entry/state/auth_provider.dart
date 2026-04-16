@@ -25,6 +25,8 @@ class AuthState {
   final bool isLoading;
 
   bool get isAuthenticated => status == AuthStatus.authenticated;
+  bool get isEmailVerified => session?.isEmailVerified ?? false;
+  bool get requiresEmailVerification => isAuthenticated && !isEmailVerified;
   EnrollmentStatus get enrollmentStatus =>
       session?.enrollmentStatus ?? EnrollmentStatus.notRegistered;
 
@@ -116,7 +118,7 @@ class AuthController extends StateNotifier<AuthState> {
       state = AuthState(
         status: AuthStatus.unauthenticated,
         isLoading: false,
-        errorMessage: error.toString(),
+        errorMessage: _friendlyAuthError(error),
       );
     }
   }
@@ -138,7 +140,7 @@ class AuthController extends StateNotifier<AuthState> {
       state = AuthState(
         status: AuthStatus.unauthenticated,
         isLoading: false,
-        errorMessage: error.toString(),
+        errorMessage: _friendlyAuthError(error),
       );
     }
   }
@@ -169,6 +171,11 @@ class AuthController extends StateNotifier<AuthState> {
     state = const AuthState(status: AuthStatus.unauthenticated);
   }
 
+  Future<void> sendEmailVerification() async {
+    final repository = await _repository;
+    await repository.sendEmailVerification();
+  }
+
   Future<void> markOnboardingSeen() async {
     final repository = await _repository;
     await repository.markOnboardingSeen();
@@ -186,3 +193,29 @@ final hasSeenOnboardingProvider = FutureProvider<bool>((ref) async {
   final repository = await ref.watch(authRepositoryProvider.future);
   return repository.hasSeenOnboarding();
 });
+
+String _friendlyAuthError(Object error) {
+  if (error is FirebaseAuthException) {
+    return switch (error.code) {
+      'email-already-in-use' =>
+        'An account already exists for this email. Sign in instead or use another email.',
+      'invalid-email' => 'Enter a valid email address.',
+      'weak-password' => 'Use a stronger password with at least 6 characters.',
+      'user-not-found' ||
+      'wrong-password' ||
+      'invalid-credential' => 'Your email or password is incorrect.',
+      'too-many-requests' =>
+        'Too many attempts right now. Please wait a moment and try again.',
+      'network-request-failed' =>
+        'We could not reach the server. Check your connection and try again.',
+      _ =>
+        error.message?.trim().isNotEmpty == true
+            ? error.message!.trim()
+            : 'Something went wrong. Please try again.',
+    };
+  }
+
+  final raw = '$error'.replaceFirst('Exception: ', '').trim();
+  if (raw.isEmpty) return 'Something went wrong. Please try again.';
+  return raw;
+}

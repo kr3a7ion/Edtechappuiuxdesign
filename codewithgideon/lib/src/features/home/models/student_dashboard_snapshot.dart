@@ -28,9 +28,9 @@ class StudentDashboardSnapshot {
   int get paidWeeks => hasAnyPending ? 0 : profile.weeksToCommit;
   int get totalProgramWeeks => course.durationWeeks;
   int get remainingWeeks =>
-      (totalProgramWeeks - profile.weeksToCommit).clamp(0, totalProgramWeeks);
+      (totalProgramWeeks - paidWeeks).clamp(0, totalProgramWeeks);
   double get progressPercent =>
-      totalProgramWeeks == 0 ? 0 : (profile.weeksToCommit / totalProgramWeeks);
+      totalProgramWeeks == 0 ? 0 : (paidWeeks / totalProgramWeeks);
   bool get canTopUp =>
       !hasAnyPending &&
       !hasPendingTopUp &&

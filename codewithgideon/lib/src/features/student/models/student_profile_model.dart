@@ -8,6 +8,8 @@ class StudentProfileModel {
     required this.fullName,
     required this.email,
     required this.phone,
+    required this.ageRange,
+    required this.gender,
     required this.pathTitle,
     required this.pathId,
     required this.courseId,
@@ -24,6 +26,8 @@ class StudentProfileModel {
   final String fullName;
   final String email;
   final String phone;
+  final String ageRange;
+  final String gender;
   final String pathTitle;
   final String pathId;
   final String courseId;

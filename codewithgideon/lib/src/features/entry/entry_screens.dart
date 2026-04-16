@@ -49,20 +49,15 @@ class _SplashScreenState extends State<SplashScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const BrandMark(size: 124)
+                    const BrandHeroLockup(
+                          markSize: 108,
+                          wordmarkHeight: 26,
+                          wordmarkColor: AppColors.foreground,
+                        )
                         .animate()
                         .scale(duration: 700.ms, curve: Curves.easeOutBack)
                         .fadeIn(),
-                    const Gap(28),
-                    Text(
-                      'CodeWithGideon',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                        color: AppColors.deepBlueDark,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ).animate().fadeIn(delay: 180.ms).slideY(begin: 0.25),
-                    const Gap(10),
+                    const Gap(4),
                     Text(
                       'Learn. Code. Excel.',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -141,10 +136,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       colors: [AppColors.tealDark, AppColors.teal],
     ),
     _SlideData(
-      title: 'Earn Certificates',
+      title: 'Pay Your Way',
       description:
-          'Complete courses and get recognised with industry-standard certificates.',
-      icon: Icons.workspace_premium_rounded,
+          'Choose pay-as-you-go top-ups or settle your full learning path upfront whenever you are ready.',
+      icon: Icons.account_balance_wallet_rounded,
       colors: [AppColors.orange, AppColors.orangeLight],
     ),
   ];
@@ -308,13 +303,12 @@ class WelcomeScreen extends StatelessWidget {
               child: Column(
                 children: [
                   const Spacer(),
-                  const BrandMark(size: 132),
-                  const Gap(34),
-                  const BrandWordmark(
-                    height: 38,
-                    color: AppColors.deepBlueDark,
+                  const BrandHeroLockup(
+                    markSize: 110,
+                    wordmarkHeight: 28,
+                    wordmarkColor: AppColors.foreground,
                   ),
-                  const Gap(18),
+                  const Gap(24),
                   Text(
                     'Master coding with live classes, expert mentors, and a thriving community.',
                     textAlign: TextAlign.center,
@@ -330,8 +324,8 @@ class WelcomeScreen extends StatelessWidget {
                     alignment: WrapAlignment.center,
                     children: const [
                       _FeaturePill(label: 'Live Classes'),
-                      _FeaturePill(label: 'Pay As You Go!!'),
-                      _FeaturePill(label: 'Certificates'),
+                      _FeaturePill(label: 'Pay As You Go'),
+                      _FeaturePill(label: 'Pay Full Optional'),
                     ],
                   ),
                   const Spacer(),
@@ -419,6 +413,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (!mounted) return;
     final authState = ref.read(authControllerProvider);
     if (!authState.isAuthenticated) return;
+    if (authState.requiresEmailVerification) {
+      context.go('/verify-email');
+      return;
+    }
     if (authState.enrollmentStatus == EnrollmentStatus.enrolled) {
       await ref.read(dashboardSnapshotProvider.future);
       if (!mounted) return;
@@ -436,13 +434,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<AuthState>(authControllerProvider, (previous, next) {
-      if (!mounted) return;
-      if (next.errorMessage != null &&
-          next.errorMessage != previous?.errorMessage) {
-        showAppSnackBar(context, next.errorMessage!);
-      }
-    });
     final authState = ref.watch(authControllerProvider);
 
     return AppScreen(
@@ -512,13 +503,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     onPressed: authState.isLoading ? null : _login,
                   ),
                   if (authState.errorMessage != null) ...[
-                    const Gap(12),
-                    Text(
-                      'Sign in failed. Please check your details and try again.',
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodySmall?.copyWith(color: AppColors.danger),
-                    ),
+                    const Gap(14),
+                    _InlineFormError(message: authState.errorMessage!),
                   ],
                   const Gap(30),
                   Row(
@@ -600,7 +586,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       if (!mounted) return;
       final authState = ref.read(authControllerProvider);
       if (authState.isAuthenticated) {
-        context.go('/continue-registration');
+        context.go('/verify-email');
       } else if (authState.errorMessage != null) {
         showAppSnackBar(context, authState.errorMessage!);
       }
@@ -615,6 +601,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final authState = ref.watch(authControllerProvider);
     final passwordsMatch = _passwordController.text == _confirmController.text;
 
     return AppScreen(
@@ -757,6 +744,10 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                       ).textTheme.bodySmall?.copyWith(color: AppColors.danger),
                     ),
                   ],
+                  if (authState.errorMessage != null) ...[
+                    const Gap(14),
+                    _InlineFormError(message: authState.errorMessage!),
+                  ],
                   const Gap(18),
                   AppCard(
                     color: AppColors.teal.withValues(alpha: 0.05),
@@ -775,7 +766,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                         for (final item in const [
                           'Access to live coding sessions',
                           'Library of recorded lessons',
-                          'Its Pay As You Go',
+                          'Pay-as-you-go billing',
                           'Community support and networking',
                         ])
                           Padding(
@@ -809,7 +800,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                   ),
                   const Gap(10),
                   Text(
-                    "Next step happens inside the app now. You'll complete your profile before payment and enrollment are fully connected.",
+                    'Next, complete your profile and choose how many weeks to unlock.',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
@@ -871,6 +862,181 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   }
 }
 
+class VerifyEmailScreen extends ConsumerStatefulWidget {
+  const VerifyEmailScreen({super.key});
+
+  @override
+  ConsumerState<VerifyEmailScreen> createState() => _VerifyEmailScreenState();
+}
+
+class _VerifyEmailScreenState extends ConsumerState<VerifyEmailScreen> {
+  bool _isSending = false;
+  bool _isRefreshing = false;
+
+  Future<void> _resendVerification() async {
+    setState(() => _isSending = true);
+    try {
+      await ref.read(authControllerProvider.notifier).sendEmailVerification();
+      if (!mounted) return;
+      showAppSnackBar(
+        context,
+        'Verification email sent. Check your inbox and spam folder.',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      showAppSnackBar(context, _friendlyEntryError(error));
+    } finally {
+      if (mounted) {
+        setState(() => _isSending = false);
+      }
+    }
+  }
+
+  Future<void> _refreshVerification() async {
+    setState(() => _isRefreshing = true);
+    try {
+      await ref.read(authControllerProvider.notifier).refreshSession();
+      if (!mounted) return;
+      final authState = ref.read(authControllerProvider);
+      if (authState.isEmailVerified) {
+        final destination = switch (authState.enrollmentStatus) {
+          EnrollmentStatus.notRegistered => '/continue-registration',
+          EnrollmentStatus.enrolled || EnrollmentStatus.pending => '/dashboard',
+        };
+        context.go(destination);
+        return;
+      }
+
+      showAppSnackBar(
+        context,
+        'Your email is still unverified. Open the link in your inbox, then tap refresh again.',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      showAppSnackBar(context, _friendlyEntryError(error));
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshing = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final authState = ref.watch(authControllerProvider);
+    final email = authState.session?.email ?? 'your email';
+
+    return AppScreen(
+      body: Stack(
+        children: [
+          _AuthBackdrop(),
+          SafeArea(
+            top: false,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(22, 30, 22, 28),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Gap(14),
+                  Container(
+                    width: 74,
+                    height: 74,
+                    decoration: const BoxDecoration(
+                      gradient: AppGradients.primary,
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.mark_email_read_rounded,
+                      color: Colors.white,
+                      size: 36,
+                    ),
+                  ),
+                  const Gap(20),
+                  Text(
+                    'Verify Your Email',
+                    style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const Gap(10),
+                  Text(
+                    'We sent a verification link to $email. Confirm your email before you continue with registration and dashboard access.',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: AppColors.mutedForeground,
+                      height: 1.55,
+                    ),
+                  ),
+                  const Gap(24),
+                  AppCard(
+                    color: AppColors.teal.withValues(alpha: 0.05),
+                    border: Border.all(
+                      color: AppColors.teal.withValues(alpha: 0.14),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Next steps',
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                        const Gap(14),
+                        for (final item in const [
+                          'Open the verification email from CodeWithGideon.',
+                          'Tap the secure confirmation link.',
+                          'Come back here and refresh your status.',
+                        ])
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Icon(
+                                  Icons.check_circle_rounded,
+                                  size: 18,
+                                  color: AppColors.teal,
+                                ),
+                                const Gap(10),
+                                Expanded(child: Text(item)),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const Gap(18),
+                  AppButton(
+                    label: 'I Have Verified My Email',
+                    isLoading: _isRefreshing,
+                    onPressed: _isRefreshing ? null : _refreshVerification,
+                  ),
+                  const Gap(12),
+                  AppButton(
+                    label: 'Resend Verification Email',
+                    variant: AppButtonVariant.outline,
+                    isLoading: _isSending,
+                    onPressed: _isSending ? null : _resendVerification,
+                  ),
+                  const Gap(12),
+                  TextButton(
+                    onPressed: () async {
+                      await ref.read(authControllerProvider.notifier).logout();
+                      if (!context.mounted) return;
+                      context.go('/welcome');
+                    },
+                    child: const Text('Use a different email'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class ContinueRegistrationScreen extends ConsumerStatefulWidget {
   const ContinueRegistrationScreen({super.key});
 
@@ -885,6 +1051,8 @@ class _ContinueRegistrationScreenState
   final _phoneController = TextEditingController();
   final _weeksController = TextEditingController(text: '4');
   bool _submitting = false;
+  bool _prefillLoaded = false;
+  String? _submitError;
   String _selectedPath = 'Flutter & Mobile App Development';
   String _selectedAgeRange = '18-24';
   String _selectedGender = 'Prefer not to say';
@@ -901,6 +1069,24 @@ class _ContinueRegistrationScreenState
   @override
   void initState() {
     super.initState();
+    Future<void>(() async {
+      final session = ref.read(authControllerProvider).session;
+      if (session == null || _prefillLoaded) return;
+      final existing = await ref
+          .read(studentRepositoryProvider)
+          .getStudentProfileByUid(session.uid);
+      if (!mounted || existing == null) return;
+      _prefillLoaded = true;
+      setState(() {
+        _fullNameController.text = existing.fullName;
+        _phoneController.text = existing.phone;
+        _weeksController.text =
+            '${existing.weeksToCommit > 0 ? existing.weeksToCommit : 4}';
+        _selectedPath = existing.pathTitle;
+        _selectedAgeRange = existing.ageRange;
+        _selectedGender = existing.gender;
+      });
+    });
     Future<void>(() async {
       final paths = await ref.read(catalogRepositoryProvider).getPaths();
       if (!mounted || paths.isEmpty) return;
@@ -921,7 +1107,8 @@ class _ContinueRegistrationScreenState
     super.dispose();
   }
 
-  Future<void> _submit() async {
+  Future<void> _saveRegistration({required bool continueToPayment}) async {
+    setState(() => _submitError = null);
     if (_fullNameController.text.trim().length < 2) {
       showAppSnackBar(context, 'Please enter your full name.');
       return;
@@ -954,11 +1141,22 @@ class _ContinueRegistrationScreenState
             weeksToCommit: int.tryParse(_weeksController.text.trim()) ?? 4,
             pathTitle: _selectedPath,
           );
-      await ref
-          .read(authControllerProvider.notifier)
-          .completeRegistration(EnrollmentStatus.pending);
       if (!mounted) return;
-      context.go('/payment?mode=initial');
+      if (continueToPayment) {
+        context.go('/payment?mode=initial&returnTo=%2Fcontinue-registration');
+        ref
+            .read(authControllerProvider.notifier)
+            .completeRegistration(EnrollmentStatus.pending);
+      } else {
+        await ref
+            .read(authControllerProvider.notifier)
+            .completeRegistration(EnrollmentStatus.pending);
+        if (!mounted) return;
+        context.go('/dashboard');
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _submitError = _friendlyEntryError(error));
     } finally {
       if (mounted) {
         setState(() => _submitting = false);
@@ -1024,7 +1222,7 @@ class _ContinueRegistrationScreenState
                   ),
                   const Gap(8),
                   Text(
-                    'The website uses a single-page continue-registration flow, so we now handle that inside the app instead of opening the dead /complete-registration URL.',
+                    'Add your learning details, then choose whether to pay now or continue later from your dashboard.',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       color: AppColors.mutedForeground,
                       height: 1.55,
@@ -1052,6 +1250,10 @@ class _ContinueRegistrationScreenState
                       ],
                     ),
                   ),
+                  if (_submitError != null) ...[
+                    const Gap(16),
+                    _InlineFormError(message: _submitError!),
+                  ],
                   const Gap(22),
                   AppTextField(
                     label: 'Full Name',
@@ -1078,32 +1280,42 @@ class _ContinueRegistrationScreenState
                     },
                   ),
                   const Gap(18),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _DropdownField<String>(
-                          label: 'Age Range',
-                          value: _selectedAgeRange,
-                          items: _ageRanges,
-                          onChanged: (value) {
-                            if (value == null) return;
-                            setState(() => _selectedAgeRange = value);
-                          },
-                        ),
-                      ),
-                      const Gap(14),
-                      Expanded(
-                        child: _DropdownField<String>(
-                          label: 'Gender',
-                          value: _selectedGender,
-                          items: _genders,
-                          onChanged: (value) {
-                            if (value == null) return;
-                            setState(() => _selectedGender = value);
-                          },
-                        ),
-                      ),
-                    ],
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final stackFields = constraints.maxWidth < 430;
+                      final ageField = _DropdownField<String>(
+                        label: 'Age Range',
+                        value: _selectedAgeRange,
+                        items: _ageRanges,
+                        onChanged: (value) {
+                          if (value == null) return;
+                          setState(() => _selectedAgeRange = value);
+                        },
+                      );
+                      final genderField = _DropdownField<String>(
+                        label: 'Gender',
+                        value: _selectedGender,
+                        items: _genders,
+                        onChanged: (value) {
+                          if (value == null) return;
+                          setState(() => _selectedGender = value);
+                        },
+                      );
+
+                      if (stackFields) {
+                        return Column(
+                          children: [ageField, const Gap(18), genderField],
+                        );
+                      }
+
+                      return Row(
+                        children: [
+                          Expanded(child: ageField),
+                          const Gap(14),
+                          Expanded(child: genderField),
+                        ],
+                      );
+                    },
                   ),
                   const Gap(18),
                   AppTextField(
@@ -1129,9 +1341,9 @@ class _ContinueRegistrationScreenState
                         ),
                         const Gap(12),
                         for (final item in const [
-                          'We save your profile next in Firestore.',
-                          'Your path will inherit the admin-managed active cohort.',
-                          'Payment and unlocked classes will follow the same setup.',
+                          'We save your profile securely.',
+                          'Your path is linked to the current active cohort.',
+                          'Payment unlocks your classes immediately after confirmation.',
                         ])
                           Padding(
                             padding: const EdgeInsets.only(bottom: 10),
@@ -1153,9 +1365,19 @@ class _ContinueRegistrationScreenState
                   ),
                   const Gap(22),
                   AppButton(
-                    label: 'Save And Continue',
+                    label: 'Save And Pay Now',
                     isLoading: _submitting,
-                    onPressed: _submitting ? null : _submit,
+                    onPressed: _submitting
+                        ? null
+                        : () => _saveRegistration(continueToPayment: true),
+                  ),
+                  const Gap(12),
+                  AppButton(
+                    label: 'Save And Go To Dashboard',
+                    variant: AppButtonVariant.outline,
+                    onPressed: _submitting
+                        ? null
+                        : () => _saveRegistration(continueToPayment: false),
                   ),
                 ],
               ),
@@ -1349,7 +1571,8 @@ class EnrollmentGateScreen extends ConsumerWidget {
                 note:
                     'If you already started checkout, we will keep the same payment reference and let you continue from where you stopped.',
                 primaryLabel: 'Complete Payment',
-                onPrimary: () => context.go('/payment?mode=initial'),
+                onPrimary: () =>
+                    context.go('/payment?mode=initial&returnTo=%2Fenrollment'),
                 secondaryLabel: 'Review Registration',
                 onSecondary: () => context.go('/continue-registration'),
               ),
@@ -1418,11 +1641,17 @@ class _DropdownField<T> extends StatelessWidget {
         const Gap(10),
         DropdownButtonFormField<T>(
           initialValue: value,
+          isExpanded: true,
+          menuMaxHeight: 320,
           items: items
               .map(
                 (item) => DropdownMenuItem<T>(
                   value: item,
-                  child: Text(item.toString()),
+                  child: Text(
+                    item.toString(),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
                 ),
               )
               .toList(),
@@ -1431,6 +1660,36 @@ class _DropdownField<T> extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
         ),
       ],
+    );
+  }
+}
+
+class _InlineFormError extends StatelessWidget {
+  const _InlineFormError({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      color: AppColors.danger.withValues(alpha: 0.08),
+      border: Border.all(color: AppColors.danger.withValues(alpha: 0.18)),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.error_outline_rounded, color: AppColors.danger),
+          const Gap(12),
+          Expanded(
+            child: Text(
+              message,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: AppColors.foreground,
+                height: 1.5,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1458,6 +1717,24 @@ class _FeaturePill extends StatelessWidget {
       ),
     );
   }
+}
+
+String _friendlyEntryError(Object error) {
+  final raw = '$error'.replaceFirst('Exception: ', '').trim();
+  if (raw.contains('permission-denied') ||
+      raw.contains('PERMISSION_DENIED') ||
+      raw.contains('insufficient permissions')) {
+    return 'We could not save your registration right now because access was denied. Please try again, and if it continues, ask admin to check Firestore permissions.';
+  }
+  if (raw.contains('network-request-failed') ||
+      raw.contains('SocketException') ||
+      raw.contains('ClientException')) {
+    return 'We could not reach the server. Check your connection and try again.';
+  }
+  if (raw.isEmpty) {
+    return 'Something went wrong. Please try again.';
+  }
+  return raw;
 }
 
 class _GlowOrb extends StatelessWidget {

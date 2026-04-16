@@ -19,9 +19,10 @@ import 'models/payment_checkout_model.dart';
 import 'state/payment_provider.dart';
 
 class PaymentScreen extends ConsumerStatefulWidget {
-  const PaymentScreen({super.key, required this.kind});
+  const PaymentScreen({super.key, required this.kind, this.returnTo});
 
   final PaymentFlowKind kind;
+  final String? returnTo;
 
   @override
   ConsumerState<PaymentScreen> createState() => _PaymentScreenState();
@@ -32,6 +33,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   late final TextEditingController _weeksController;
   bool _hasSeededWeeks = false;
   bool _processing = false;
+  bool _paymentCompleted = false;
 
   @override
   void initState() {
@@ -74,6 +76,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                   return _PaymentErrorState(
                     message:
                         'We could not prepare your payment right now. Please try again.',
+                    onBack: _handleExit,
                     onRetry: () {
                       setState(() {
                         final session = ref
@@ -123,7 +126,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                       PremiumPageHeader(
                         leading: PremiumIconButton(
                           icon: Icons.arrow_back_rounded,
-                          onTap: () => context.pop(),
+                          onTap: _handleExit,
                         ),
                         title: checkout.kind.title,
                       ),
@@ -145,8 +148,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                             const Gap(8),
                             Text(
                               checkout.kind == PaymentFlowKind.topUp
-                                  ? 'You currently have ${checkout.committedWeeks} week(s). ${checkout.remainingWeeks} more week(s) remain in this program.'
-                                  : 'Choose how many weeks you want to unlock now. You can always top up later from your dashboard.',
+                                  ? 'You already have ${checkout.committedWeeks} week(s). Choose how many more weeks to unlock now.'
+                                  : 'Choose the number of weeks you want to unlock for this registration.',
                               style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(color: AppColors.mutedForeground),
                             ),
@@ -210,6 +213,11 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                             ? null
                             : () => _startPayment(checkout, pricing),
                       ),
+                      const Gap(12),
+                      TextButton(
+                        onPressed: _processing ? null : _handleExit,
+                        child: const Text('Cancel'),
+                      ),
                     ],
                   ),
                 );
@@ -238,6 +246,20 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       selection: TextSelection.collapsed(offset: '$next'.length),
     );
     setState(() {});
+  }
+
+  void _handleExit() {
+    final fallback = widget.kind == PaymentFlowKind.topUp
+        ? '/dashboard'
+        : '/continue-registration';
+    final target = widget.returnTo ?? fallback;
+
+    if (Navigator.of(context).canPop()) {
+      context.pop();
+      return;
+    }
+
+    context.go(target);
   }
 
   Future<void> _startPayment(
@@ -279,11 +301,14 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       'expectedAmountKobo': pricing.totalPriceKobo,
       'baseAmountKobo': pricing.basePriceKobo,
       'processingFeeKobo': pricing.processingFeeKobo,
+      'baseAmount': pricing.basePrice,
+      'weeklyRate': pricing.weeklyRate,
       'app': 'codewithgideon-mobile',
       'ts': DateTime.now().millisecondsSinceEpoch,
     };
 
     setState(() => _processing = true);
+    _paymentCompleted = false;
     try {
       final initialized = await paymentRepository.initializePayment(
         email: session.email,
@@ -304,14 +329,13 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         metadata: metadata,
         onClosed: () {
           if (!mounted) return;
+          if (_paymentCompleted) return;
           setState(() => _processing = false);
-          showAppSnackBar(
-            context,
-            'Payment window closed. You can continue anytime from here.',
-          );
+          _handleExit();
         },
         onSuccess: () async {
           try {
+            _paymentCompleted = true;
             await paymentRepository.verifyPayment(
               checkout: checkout,
               pricing: pricing,
@@ -390,6 +414,16 @@ class _PaymentHero extends StatelessWidget {
             '${pricing.weeks} week(s) at ${_formatNaira(pricing.weeklyRate)} per week',
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
               color: Colors.white.withValues(alpha: 0.92),
+            ),
+          ),
+          const Gap(12),
+          Text(
+            checkout.kind == PaymentFlowKind.topUp
+                ? 'Add more access and keep your class schedule moving.'
+                : 'Your registration is saved. Payment completes your enrollment.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Colors.white.withValues(alpha: 0.8),
+              height: 1.5,
             ),
           ),
         ],
@@ -545,15 +579,15 @@ class _PendingPaymentCard extends StatelessWidget {
               children: [
                 Text(
                   checkout.kind == PaymentFlowKind.topUp
-                      ? 'You have a top-up payment in progress.'
-                      : 'You have a saved payment session in progress.',
+                      ? 'Top-up checkout in progress'
+                      : 'Checkout in progress',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
                 ),
                 const Gap(6),
                 Text(
-                  'Reference ${pending.reference} for ${pending.weeks} week(s). You can continue it below.',
+                  'Reference ${pending.reference} for ${pending.weeks} week(s). Continue below when you are ready.',
                   style: Theme.of(
                     context,
                   ).textTheme.bodyMedium?.copyWith(color: AppColors.foreground),
@@ -694,10 +728,15 @@ class _SummaryRow extends StatelessWidget {
 }
 
 class _PaymentErrorState extends StatelessWidget {
-  const _PaymentErrorState({required this.message, required this.onRetry});
+  const _PaymentErrorState({
+    required this.message,
+    required this.onRetry,
+    required this.onBack,
+  });
 
   final String message;
   final VoidCallback onRetry;
+  final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
@@ -709,7 +748,7 @@ class _PaymentErrorState extends StatelessWidget {
           PremiumPageHeader(
             leading: PremiumIconButton(
               icon: Icons.arrow_back_rounded,
-              onTap: () => Navigator.of(context).maybePop(),
+              onTap: onBack,
             ),
             title: 'Payment unavailable',
             subtitle: message,

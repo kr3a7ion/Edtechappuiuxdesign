@@ -10,6 +10,8 @@ import 'states/app_state_widgets.dart';
 
 enum AppButtonVariant { primary, secondary, outline, ghost, danger }
 
+const _brandLogoAsset = 'assets/branding/codewithgideon_logo.png';
+
 class AppButton extends StatelessWidget {
   const AppButton({
     super.key,
@@ -402,11 +404,43 @@ class _BackdropOrb extends StatelessWidget {
   }
 }
 
+class BrandLogo extends StatelessWidget {
+  const BrandLogo({
+    super.key,
+    this.size = 136,
+    this.semanticLabel = 'CodeWithGideon logo',
+  });
+
+  final double size;
+  final String semanticLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: semanticLabel,
+      image: true,
+      child: Image.asset(
+        _brandLogoAsset,
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.high,
+      ),
+    );
+  }
+}
+
 class BrandMark extends StatelessWidget {
-  const BrandMark({super.key, this.size = 112, this.showBadge = true});
+  const BrandMark({
+    super.key,
+    this.size = 112,
+    this.showBadge = true,
+    this.isCircular = false,
+  });
 
   final double size;
   final bool showBadge;
+  final bool isCircular;
 
   @override
   Widget build(BuildContext context) {
@@ -422,7 +456,10 @@ class BrandMark extends StatelessWidget {
             child: Container(
               decoration: BoxDecoration(
                 gradient: AppGradients.primary,
-                borderRadius: BorderRadius.circular(size * 0.28),
+                shape: isCircular ? BoxShape.circle : BoxShape.rectangle,
+                borderRadius: isCircular
+                    ? null
+                    : BorderRadius.circular(size * 0.28),
                 boxShadow: AppShadows.premium,
               ),
               padding: EdgeInsets.all(size * 0.16),
@@ -453,6 +490,101 @@ class BrandMark extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+class BrandHeroLockup extends StatelessWidget {
+  const BrandHeroLockup({
+    super.key,
+    this.markSize = 124,
+    this.wordmarkHeight = 28,
+    this.wordmarkColor = AppColors.foreground,
+    this.caption,
+    this.center = true,
+    this.showWordmark = true,
+  });
+
+  final double markSize;
+  final double wordmarkHeight;
+  final Color wordmarkColor;
+  final String? caption;
+  final bool center;
+  final bool showWordmark;
+
+  @override
+  Widget build(BuildContext context) {
+    final alignment = center
+        ? CrossAxisAlignment.center
+        : CrossAxisAlignment.start;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: alignment,
+      children: [
+        SizedBox(
+          width: markSize * 1.72,
+          height: markSize * 1.72,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(
+                width: markSize * 1.72,
+                height: markSize * 1.72,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      AppColors.teal.withValues(alpha: 0.24),
+                      AppColors.deepBlueLight.withValues(alpha: 0.14),
+                      Colors.white.withValues(alpha: 0.0),
+                    ],
+                    stops: const [0.1, 0.52, 1],
+                  ),
+                ),
+              ),
+              Container(
+                width: markSize * 1.34,
+                height: markSize * 1.34,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.84),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.72),
+                    width: 1.4,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.deepBlue.withValues(alpha: 0.11),
+                      blurRadius: 36,
+                      offset: const Offset(0, 16),
+                    ),
+                  ],
+                ),
+              ),
+              BrandMark(size: markSize, showBadge: false, isCircular: true),
+            ],
+          ),
+        ),
+        if (showWordmark) ...[
+          const Gap(18),
+          BrandWordmark(height: wordmarkHeight, color: wordmarkColor),
+        ],
+        if (caption != null) ...[
+          const Gap(10),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: markSize * 2.5),
+            child: Text(
+              caption!,
+              textAlign: center ? TextAlign.center : TextAlign.start,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: AppColors.mutedForeground,
+                height: 1.55,
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -593,4 +725,46 @@ void showAppSnackBar(BuildContext context, String message) {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       ),
     );
+}
+
+class DoubleBackToExitScope extends StatefulWidget {
+  const DoubleBackToExitScope({
+    super.key,
+    required this.child,
+    this.message = 'Press back again to close the app.',
+  });
+
+  final Widget child;
+  final String message;
+
+  @override
+  State<DoubleBackToExitScope> createState() => _DoubleBackToExitScopeState();
+}
+
+class _DoubleBackToExitScopeState extends State<DoubleBackToExitScope> {
+  DateTime? _lastBackPressAt;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+
+        final now = DateTime.now();
+        final shouldExit =
+            _lastBackPressAt != null &&
+            now.difference(_lastBackPressAt!) <= const Duration(seconds: 2);
+
+        if (shouldExit) {
+          SystemNavigator.pop();
+          return;
+        }
+
+        _lastBackPressAt = now;
+        showAppSnackBar(context, widget.message);
+      },
+      child: widget.child,
+    );
+  }
 }

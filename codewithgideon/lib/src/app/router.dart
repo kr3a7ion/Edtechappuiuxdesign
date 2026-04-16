@@ -17,6 +17,7 @@ import '../features/profile/profile_screens.dart';
 import '../features/recorded/recorded_screens.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
+GlobalKey<NavigatorState> get appRootNavigatorKey => _rootNavigatorKey;
 final _dashboardNavigatorKey = GlobalKey<NavigatorState>(
   debugLabel: 'dashboard',
 );
@@ -56,6 +57,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         '/certificates',
         '/settings',
       ].any(location.startsWith);
+      final isPaymentRoute = location.startsWith('/payment');
+      final isPendingShellRoute = const [
+        '/dashboard',
+        '/classes',
+        '/community',
+        '/profile',
+        '/settings',
+        '/profile/edit',
+      ].any(location.startsWith);
       final isAuthFlow = const [
         '/welcome',
         '/login',
@@ -63,6 +73,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         '/forgot-password',
         '/continue-registration',
       ].contains(location);
+      final isVerificationRoute = location == '/verify-email';
 
       if (isBooting) {
         return location == '/' ? null : '/';
@@ -71,13 +82,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       if (location == '/') {
         if (!hasSeenOnboarding) return '/onboarding';
         if (!authState.isAuthenticated) return '/welcome';
-        if (authState.enrollmentStatus == EnrollmentStatus.notRegistered) {
-          return '/continue-registration';
-        }
-        if (authState.enrollmentStatus == EnrollmentStatus.enrolled) {
-          return '/dashboard';
-        }
-        return '/enrollment';
+        return _signedInHome(authState);
       }
 
       if (!hasSeenOnboarding && location != '/onboarding') {
@@ -86,44 +91,55 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       if (hasSeenOnboarding && location == '/onboarding') {
         if (!authState.isAuthenticated) return '/welcome';
-        if (authState.enrollmentStatus == EnrollmentStatus.notRegistered) {
-          return '/continue-registration';
-        }
-        if (authState.enrollmentStatus == EnrollmentStatus.enrolled) {
-          return '/dashboard';
-        }
-        return '/enrollment';
+        return _signedInHome(authState);
       }
 
       if (!authState.isAuthenticated) {
         if (isProtected ||
             location == '/enrollment' ||
-            location == '/continue-registration') {
+            location == '/continue-registration' ||
+            isVerificationRoute) {
           return '/welcome';
         }
         return null;
       }
 
+      if (authState.requiresEmailVerification) {
+        return isVerificationRoute ? null : '/verify-email';
+      }
+
+      if (isVerificationRoute) {
+        return _signedInHome(authState);
+      }
+
       if (authState.enrollmentStatus == EnrollmentStatus.notRegistered &&
           location != '/continue-registration' &&
-          location != '/payment') {
+          !isPaymentRoute) {
         return '/continue-registration';
       }
 
       if (isAuthFlow && location != '/continue-registration') {
-        if (authState.enrollmentStatus == EnrollmentStatus.enrolled) {
+        if (authState.enrollmentStatus == EnrollmentStatus.notRegistered) {
+          return '/continue-registration';
+        }
+        if (authState.enrollmentStatus == EnrollmentStatus.enrolled ||
+            authState.enrollmentStatus == EnrollmentStatus.pending) {
           return '/dashboard';
         }
         return '/enrollment';
       }
 
       if (authState.enrollmentStatus != EnrollmentStatus.enrolled &&
-          isProtected) {
+          isProtected &&
+          !isPaymentRoute &&
+          !(authState.enrollmentStatus == EnrollmentStatus.pending &&
+              isPendingShellRoute)) {
         return '/enrollment';
       }
 
       if (location == '/enrollment' &&
-          authState.enrollmentStatus == EnrollmentStatus.enrolled) {
+          (authState.enrollmentStatus == EnrollmentStatus.enrolled ||
+              authState.enrollmentStatus == EnrollmentStatus.pending)) {
         return '/dashboard';
       }
 
@@ -149,6 +165,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const ForgotPasswordScreen(),
       ),
       GoRoute(
+        path: '/verify-email',
+        builder: (context, state) => const VerifyEmailScreen(),
+      ),
+      GoRoute(
         path: '/continue-registration',
         builder: (context, state) => const ContinueRegistrationScreen(),
       ),
@@ -160,10 +180,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/payment',
         builder: (context, state) {
           final mode = state.uri.queryParameters['mode'];
+          final rawReturnTo = state.uri.queryParameters['returnTo'];
+          final returnTo = rawReturnTo != null && rawReturnTo.startsWith('/')
+              ? rawReturnTo
+              : null;
           return PaymentScreen(
             kind: mode == 'topup'
                 ? PaymentFlowKind.topUp
                 : PaymentFlowKind.initial,
+            returnTo: returnTo,
           );
         },
       ),
@@ -288,3 +313,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+String _signedInHome(AuthState authState) {
+  if (authState.requiresEmailVerification) {
+    return '/verify-email';
+  }
+  if (authState.enrollmentStatus == EnrollmentStatus.notRegistered) {
+    return '/continue-registration';
+  }
+  if (authState.enrollmentStatus == EnrollmentStatus.enrolled ||
+      authState.enrollmentStatus == EnrollmentStatus.pending) {
+    return '/dashboard';
+  }
+  return '/enrollment';
+}

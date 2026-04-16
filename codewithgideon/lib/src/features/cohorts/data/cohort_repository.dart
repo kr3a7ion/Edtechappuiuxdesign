@@ -90,6 +90,38 @@ class CohortRepository {
     });
   }
 
+  Stream<List<CohortMessageModel>> watchMessagesForCohort(String cohortKey) {
+    return _firebaseFirestore
+        .collection('cohorts')
+        .doc(cohortKey)
+        .collection('messages')
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snapshot) {
+          if (snapshot.docs.isEmpty) return <CohortMessageModel>[];
+
+          return snapshot.docs.map((doc) {
+            final data = doc.data();
+            final createdAtRaw = data['createdAt'];
+            final createdAt = createdAtRaw is Timestamp
+                ? createdAtRaw.toDate()
+                : DateTime.tryParse('${data['createdAt']}') ?? DateTime.now();
+
+            return CohortMessageModel(
+              id: doc.id,
+              cohortId: cohortKey,
+              cohortLabel: (data['cohortLabel'] as String?) ?? '',
+              title: (data['title'] as String?) ?? 'Announcement',
+              body: (data['body'] as String?) ?? '',
+              ctaLabel: (data['ctaLabel'] as String?) ?? '',
+              ctaUrl: (data['ctaUrl'] as String?) ?? '',
+              sentBy: (data['sentBy'] as String?) ?? 'Admin',
+              createdAt: createdAt,
+            );
+          }).toList();
+        });
+  }
+
   Future<List<CohortSessionModel>> getSessionsForCohort(String cohortKey) {
     return _apiClient.simulateRequest(() async {
       final snapshot = await _firebaseFirestore

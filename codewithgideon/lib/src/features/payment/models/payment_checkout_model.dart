@@ -8,11 +8,11 @@ extension PaymentFlowKindX on PaymentFlowKind {
   String get apiValue => this == PaymentFlowKind.topUp ? 'topup' : 'initial';
 
   String get title =>
-      this == PaymentFlowKind.topUp ? 'TopUp Access' : 'Complete Payment';
+      this == PaymentFlowKind.topUp ? 'Top Up Access' : 'Complete Registration';
 
   String get actionLabel => this == PaymentFlowKind.topUp
-      ? 'Continue To Secure Top Up'
-      : 'Continue To Secure Payment';
+      ? 'Continue To Paystack'
+      : 'Pay And Finish Registration';
 }
 
 class PaymentCheckoutModel {

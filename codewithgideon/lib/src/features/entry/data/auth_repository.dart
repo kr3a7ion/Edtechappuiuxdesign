@@ -10,24 +10,28 @@ class AuthSession {
     required this.email,
     required this.accessToken,
     required this.enrollmentStatus,
+    required this.isEmailVerified,
   });
 
   final String uid;
   final String email;
   final String accessToken;
   final EnrollmentStatus enrollmentStatus;
+  final bool isEmailVerified;
 
   AuthSession copyWith({
     String? uid,
     String? email,
     String? accessToken,
     EnrollmentStatus? enrollmentStatus,
+    bool? isEmailVerified,
   }) {
     return AuthSession(
       uid: uid ?? this.uid,
       email: email ?? this.email,
       accessToken: accessToken ?? this.accessToken,
       enrollmentStatus: enrollmentStatus ?? this.enrollmentStatus,
+      isEmailVerified: isEmailVerified ?? this.isEmailVerified,
     );
   }
 
@@ -37,6 +41,7 @@ class AuthSession {
       'email': email,
       'accessToken': accessToken,
       'enrollmentStatus': enrollmentStatus.name,
+      'isEmailVerified': isEmailVerified,
     };
   }
 
@@ -49,6 +54,7 @@ class AuthSession {
         (item) => item.name == json['enrollmentStatus'],
         orElse: () => EnrollmentStatus.enrolled,
       ),
+      isEmailVerified: json['isEmailVerified'] as bool? ?? false,
     );
   }
 }
@@ -97,13 +103,28 @@ class AuthRepository {
       password: password.trim(),
     );
     await markOnboardingSeen();
+    try {
+      await credential.user?.sendEmailVerification();
+    } on FirebaseAuthException {
+      // The verification screen can resend if the first attempt fails.
+    }
     final token = await credential.user?.getIdToken() ?? '';
     return AuthSession(
       uid: credential.user!.uid,
       email: credential.user!.email ?? email.trim(),
       accessToken: token,
       enrollmentStatus: EnrollmentStatus.notRegistered,
+      isEmailVerified: credential.user?.emailVerified ?? false,
     );
+  }
+
+  Future<void> sendEmailVerification() async {
+    final user = _firebaseAuth.currentUser;
+    if (user == null) {
+      throw StateError('Your session expired. Please sign in again.');
+    }
+
+    await user.sendEmailVerification();
   }
 
   Future<void> logout() async {
@@ -119,10 +140,16 @@ class AuthRepository {
   }
 
   Future<AuthSession> _buildSession(User user) async {
-    final token = await user.getIdToken() ?? '';
+    try {
+      await user.reload();
+    } on FirebaseAuthException {
+      // Fall back to the cached user so offline launches do not force logout.
+    }
+    final refreshedUser = _firebaseAuth.currentUser ?? user;
+    final token = await refreshedUser.getIdToken(true) ?? '';
     final doc = await _firebaseFirestore
         .collection('users')
-        .doc(user.uid)
+        .doc(refreshedUser.uid)
         .get();
     final data = doc.data();
     final pendingPayment = data?['pendingPayment'];
@@ -139,10 +166,11 @@ class AuthRepository {
         : EnrollmentStatus.enrolled;
 
     return AuthSession(
-      uid: user.uid,
-      email: user.email ?? '',
+      uid: refreshedUser.uid,
+      email: refreshedUser.email ?? '',
       accessToken: token,
       enrollmentStatus: enrollmentStatus,
+      isEmailVerified: refreshedUser.emailVerified,
     );
   }
 }

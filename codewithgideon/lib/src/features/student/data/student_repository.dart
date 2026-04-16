@@ -155,6 +155,8 @@ class StudentRepository {
       fullName: (data['fullName'] as String?) ?? 'Student',
       email: (data['email'] as String?) ?? '',
       phone: (data['phone'] as String?) ?? '',
+      ageRange: (data['ageRange'] as String?) ?? '18-24',
+      gender: (data['gender'] as String?) ?? 'Prefer not to say',
       pathTitle: (data['path'] as String?) ?? 'Unknown Path',
       pathId: (data['pathId'] as String?) ?? '',
       courseId: (data['courseId'] as String?) ?? '',

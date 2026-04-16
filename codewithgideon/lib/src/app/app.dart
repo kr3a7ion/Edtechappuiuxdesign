@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/state/app_providers.dart';
+import '../core/services/notification_service.dart';
 import '../core/theme/app_theme.dart';
 import '../core/widgets/states/app_state_widgets.dart';
 import 'router.dart';
@@ -28,6 +29,7 @@ class CodeWithGideonApp extends ConsumerWidget {
       themeMode: settings.darkMode ? ThemeMode.dark : ThemeMode.light,
       routerConfig: router,
       builder: (context, child) {
+        NotificationService().consumePendingNavigation();
         final mediaQuery = MediaQuery.of(context);
         return MediaQuery(
           data: mediaQuery.copyWith(

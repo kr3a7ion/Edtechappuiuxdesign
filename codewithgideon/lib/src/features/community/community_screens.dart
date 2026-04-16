@@ -3,11 +3,9 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/data/demo_data.dart';
-import '../../core/services/notification_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_scaffold.dart';
@@ -16,43 +14,9 @@ import '../cohorts/models/cohort_message_model.dart';
 import '../cohorts/models/cohort_session_model.dart';
 import '../home/models/student_dashboard_snapshot.dart';
 import '../home/state/dashboard_provider.dart';
+import '../community/state/community_notifications_provider.dart';
 import 'models/mentor_request_model.dart';
 import 'state/mentor_request_provider.dart';
-
-final cohortMessagesProvider =
-    FutureProvider.autoDispose<List<CohortMessageModel>>((ref) async {
-      final dashboard = await ref.watch(dashboardSnapshotProvider.future);
-      final cohortKey = dashboard.activeCohort.cohortKey.trim();
-      if (cohortKey.isEmpty) return <CohortMessageModel>[];
-      return ref
-          .watch(cohortRepositoryProvider)
-          .getMessagesForCohort(cohortKey);
-    });
-
-final unreadMessagesCountProvider = FutureProvider.autoDispose<int>((
-  ref,
-) async {
-  final messages = await ref.watch(cohortMessagesProvider.future);
-  final prefs = await SharedPreferences.getInstance();
-  final lastRead = prefs.getInt('lastReadMessages') ?? 0;
-  final lastReadTime = DateTime.fromMillisecondsSinceEpoch(lastRead);
-  final unreadCount = messages
-      .where((msg) => msg.createdAt.isAfter(lastReadTime))
-      .length;
-
-  // Show notification if there are unread messages and we haven't notified recently
-  if (unreadCount > 0) {
-    final lastNotified = prefs.getInt('lastNotifiedMessages') ?? 0;
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - lastNotified > 60000) {
-      // 1 minute cooldown
-      await NotificationService().showNewMessageNotification();
-      await prefs.setInt('lastNotifiedMessages', now);
-    }
-  }
-
-  return unreadCount;
-});
 
 class CommunityChannelsScreen extends StatefulWidget {
   const CommunityChannelsScreen({super.key});
@@ -76,143 +40,145 @@ class _CommunityChannelsScreenState extends State<CommunityChannelsScreen> {
         )
         .toList();
 
-    return SafeArea(
-      top: false,
-      bottom: false,
-      child: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(22, 30, 22, 14),
-              child: AppCard(
-                radius: 32,
-                shadow: AppShadows.premium,
-                child: Column(
-                  children: [
-                    Consumer(
-                      builder: (context, ref, child) {
-                        final unreadCountAsync = ref.watch(
-                          unreadMessagesCountProvider,
-                        );
-                        return PremiumPageHeader(
-                          title: 'Community',
-                          subtitle:
-                              'Join thoughtful student spaces, browse updates, and keep mentor conversations close.',
-                          trailing: Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              PremiumIconButton(
-                                icon: Icons.chat_bubble_outline_rounded,
-                                onTap: () =>
-                                    context.push('/community/messages'),
-                              ),
-                              if (unreadCountAsync.maybeWhen(
-                                data: (count) => count > 0,
-                                orElse: () => false,
-                              ))
-                                Positioned(
-                                  right: -2,
-                                  top: -2,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(4),
-                                    decoration: const BoxDecoration(
-                                      color: AppColors.orange,
-                                      shape: BoxShape.circle,
-                                    ),
-                                    constraints: const BoxConstraints(
-                                      minWidth: 18,
-                                      minHeight: 18,
-                                    ),
-                                    child: unreadCountAsync.maybeWhen(
-                                      data: (count) => Text(
-                                        count > 99 ? '99+' : '$count',
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .labelSmall
-                                            ?.copyWith(color: Colors.white),
-                                        textAlign: TextAlign.center,
+    return DoubleBackToExitScope(
+      child: SafeArea(
+        top: false,
+        bottom: false,
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(22, 30, 22, 14),
+                child: AppCard(
+                  radius: 32,
+                  shadow: AppShadows.premium,
+                  child: Column(
+                    children: [
+                      Consumer(
+                        builder: (context, ref, child) {
+                          final unreadCountAsync = ref.watch(
+                            unreadMessagesCountProvider,
+                          );
+                          return PremiumPageHeader(
+                            title: 'Community',
+                            subtitle:
+                                'Join thoughtful student spaces, browse updates, and keep mentor conversations close.',
+                            trailing: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                PremiumIconButton(
+                                  icon: Icons.chat_bubble_outline_rounded,
+                                  onTap: () =>
+                                      context.push('/community/messages'),
+                                ),
+                                if (unreadCountAsync.maybeWhen(
+                                  data: (count) => count > 0,
+                                  orElse: () => false,
+                                ))
+                                  Positioned(
+                                    right: -2,
+                                    top: -2,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(4),
+                                      decoration: const BoxDecoration(
+                                        color: AppColors.orange,
+                                        shape: BoxShape.circle,
                                       ),
-                                      orElse: () => const SizedBox.shrink(),
+                                      constraints: const BoxConstraints(
+                                        minWidth: 18,
+                                        minHeight: 18,
+                                      ),
+                                      child: unreadCountAsync.maybeWhen(
+                                        data: (count) => Text(
+                                          count > 99 ? '99+' : '$count',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .labelSmall
+                                              ?.copyWith(color: Colors.white),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                        orElse: () => const SizedBox.shrink(),
+                                      ),
                                     ),
                                   ),
-                                ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                    const Gap(18),
-                    TextField(
-                      onChanged: (value) => setState(() => _query = value),
-                      decoration: InputDecoration(
-                        hintText: 'Search channels...',
-                        prefixIcon: const Icon(Icons.search_rounded),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(22),
-                          borderSide: const BorderSide(
-                            color: AppColors.teal,
-                            width: 1.6,
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                      const Gap(18),
+                      TextField(
+                        onChanged: (value) => setState(() => _query = value),
+                        decoration: InputDecoration(
+                          hintText: 'Search channels...',
+                          prefixIcon: const Icon(Icons.search_rounded),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(22),
+                            borderSide: const BorderSide(
+                              color: AppColors.teal,
+                              width: 1.6,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(22, 18, 22, 130),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                Row(
-                  children: [
-                    Text(
-                      'Channels',
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        color: AppColors.mutedForeground,
-                        fontWeight: FontWeight.w800,
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(22, 18, 22, 130),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
+                  Row(
+                    children: [
+                      Text(
+                        'Channels',
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: AppColors.mutedForeground,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      '${channels.length} total',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-                const Gap(12),
-                if (channels.isEmpty)
-                  AppEmptyState(
-                    title: 'No channels found',
-                    message:
-                        'Try another keyword or clear your search to see every space.',
-                    icon: Icons.forum_outlined,
-                    action: AppButton(
-                      label: 'Clear Search',
-                      expanded: false,
-                      onPressed: () => setState(() => _query = ''),
-                    ),
-                  )
-                else
-                  for (var index = 0; index < channels.length; index++)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child:
-                          _ChannelCard(
-                                channel: channels[index],
-                                onTap: () => context.push(
-                                  '/community/chat/${channels[index].id}',
-                                ),
-                              )
-                              .animate()
-                              .fadeIn(delay: (index * 60).ms)
-                              .slideY(begin: 0.12),
-                    ),
-              ]),
+                      const Spacer(),
+                      Text(
+                        '${channels.length} total',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                  const Gap(12),
+                  if (channels.isEmpty)
+                    AppEmptyState(
+                      title: 'No channels found',
+                      message:
+                          'Try another keyword or clear your search to see every space.',
+                      icon: Icons.forum_outlined,
+                      action: AppButton(
+                        label: 'Clear Search',
+                        expanded: false,
+                        onPressed: () => setState(() => _query = ''),
+                      ),
+                    )
+                  else
+                    for (var index = 0; index < channels.length; index++)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child:
+                            _ChannelCard(
+                                  channel: channels[index],
+                                  onTap: () => context.push(
+                                    '/community/chat/${channels[index].id}',
+                                  ),
+                                )
+                                .animate()
+                                .fadeIn(delay: (index * 60).ms)
+                                .slideY(begin: 0.12),
+                      ),
+                ]),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -783,7 +749,26 @@ class DirectMessagesScreen extends ConsumerStatefulWidget {
 }
 
 class _DirectMessagesScreenState extends ConsumerState<DirectMessagesScreen> {
-  String _query = '';
+  Set<String> _readIds = <String>{};
+  Set<String> _hiddenIds = <String>{};
+  bool _notificationPrefsReady = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotificationPrefs();
+  }
+
+  Future<void> _loadNotificationPrefs() async {
+    final readIds = await loadReadNotificationIds();
+    final hiddenIds = await loadHiddenNotificationIds();
+    if (!mounted) return;
+    setState(() {
+      _readIds = readIds;
+      _hiddenIds = hiddenIds;
+      _notificationPrefsReady = true;
+    });
+  }
 
   Future<void> _openCohortMessageUrl(String url) async {
     final uri = Uri.tryParse(url);
@@ -798,6 +783,114 @@ class _DirectMessagesScreenState extends ConsumerState<DirectMessagesScreen> {
     }
 
     await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  Future<void> _openCohortMessage(CohortMessageModel item) async {
+    await markNotificationRead(item);
+    if (!mounted) return;
+    setState(() {
+      _readIds = {..._readIds, item.id};
+    });
+    ref.invalidate(unreadMessagesCountProvider);
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: AppCard(
+              radius: 28,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: AppColors.teal,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        alignment: Alignment.center,
+                        child: const Icon(
+                          Icons.notifications_active_rounded,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const Gap(12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item.title,
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.w800),
+                            ),
+                            const Gap(4),
+                            Text(
+                              item.cohortLabel.isEmpty
+                                  ? 'Cohort update'
+                                  : item.cohortLabel,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Gap(18),
+                  Text(
+                    item.body,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: AppColors.mutedForeground,
+                      height: 1.55,
+                    ),
+                  ),
+                  const Gap(18),
+                  if (item.hasCta)
+                    AppButton(
+                      label: item.ctaLabel,
+                      expanded: false,
+                      onPressed: () async {
+                        Navigator.of(context).pop();
+                        await _openCohortMessageUrl(item.ctaUrl);
+                      },
+                    ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _markAllAsRead(List<CohortMessageModel> messages) async {
+    if (messages.isEmpty) return;
+    await markNotificationsRead(messages);
+    if (!mounted) return;
+    setState(() {
+      _readIds = {..._readIds, ...messages.map((item) => item.id)};
+    });
+    ref.invalidate(unreadMessagesCountProvider);
+  }
+
+  Future<void> _clearAllNotifications(List<CohortMessageModel> messages) async {
+    if (messages.isEmpty) return;
+    await clearNotifications(messages);
+    if (!mounted) return;
+    setState(() {
+      _hiddenIds = {..._hiddenIds, ...messages.map((item) => item.id)};
+      _readIds = {..._readIds, ...messages.map((item) => item.id)};
+    });
+    ref.invalidate(unreadMessagesCountProvider);
   }
 
   @override
@@ -827,23 +920,12 @@ class _DirectMessagesScreenState extends ConsumerState<DirectMessagesScreen> {
         ),
       ),
       data: (messages) {
-        // Mark messages as read
-        WidgetsBinding.instance.addPostFrameCallback((_) async {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setInt(
-            'lastReadMessages',
-            DateTime.now().millisecondsSinceEpoch,
-          );
-          ref.invalidate(unreadMessagesCountProvider);
-        });
-
-        final filteredMessages = messages.where((item) {
-          final search = _query.toLowerCase();
-          return _query.isEmpty ||
-              item.title.toLowerCase().contains(search) ||
-              item.body.toLowerCase().contains(search) ||
-              item.ctaLabel.toLowerCase().contains(search);
-        }).toList();
+        final visibleMessages = messages
+            .where((item) => !_hiddenIds.contains(item.id))
+            .toList();
+        final unreadCount = visibleMessages
+            .where((item) => !_readIds.contains(item.id))
+            .length;
 
         return AppScreen(
           body: SafeArea(
@@ -862,9 +944,9 @@ class _DirectMessagesScreenState extends ConsumerState<DirectMessagesScreen> {
                   child: Column(
                     children: [
                       PremiumPageHeader(
-                        title: 'Cohort Messages',
+                        title: 'Notifications',
                         subtitle:
-                            'Announcements, updates, and helpful links from your cohort team.',
+                            'Announcements, updates, and action items from your cohort team.',
                         leading: PremiumIconButton(
                           icon: Icons.arrow_back_rounded,
                           onTap: () => context.pop(),
@@ -872,131 +954,303 @@ class _DirectMessagesScreenState extends ConsumerState<DirectMessagesScreen> {
                         ),
                         onDark: true,
                       ),
-                      const Gap(10),
-                      TextField(
-                        onChanged: (value) => setState(() => _query = value),
-                        decoration: InputDecoration(
-                          hintText: 'Search messages...',
-                          prefixIcon: const Icon(Icons.search_rounded),
-                          fillColor: Colors.white,
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(22),
-                            borderSide: const BorderSide(
-                              color: AppColors.teal,
-                              width: 1.6,
-                            ),
+                      const Gap(18),
+                      Container(
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.14),
                           ),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 46,
+                              height: 46,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.16),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              alignment: Alignment.center,
+                              child: const Icon(
+                                Icons.notifications_active_rounded,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const Gap(12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    unreadCount == 0
+                                        ? 'All caught up'
+                                        : '$unreadCount unread update${unreadCount == 1 ? '' : 's'}',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleSmall
+                                        ?.copyWith(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                  ),
+                                  const Gap(4),
+                                  Text(
+                                    'Tap any card to open the full notification and follow links.',
+                                    style: Theme.of(context).textTheme.bodySmall
+                                        ?.copyWith(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.82,
+                                          ),
+                                        ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
                 ),
                 Expanded(
-                  child: filteredMessages.isEmpty
+                  child: !_notificationPrefsReady
+                      ? const AppLoadingState(
+                          title: 'Preparing notifications',
+                          message: 'Syncing what you have already read.',
+                          compact: true,
+                        )
+                      : visibleMessages.isEmpty
                       ? AppEmptyState(
-                          title: 'No cohort messages found',
+                          title: 'No notifications left',
                           message: messages.isEmpty
                               ? 'Your admin has not sent any cohort messages yet.'
-                              : 'Try a different search term.',
-                          icon: Icons.message_outlined,
+                              : 'Everything here has been cleared. New updates will appear automatically.',
+                          icon: Icons.notifications_off_outlined,
                         )
-                      : ListView.builder(
+                      : ListView(
                           padding: const EdgeInsets.fromLTRB(22, 18, 22, 28),
-                          itemCount: filteredMessages.length,
-                          itemBuilder: (context, index) {
-                            final item = filteredMessages[index];
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: AppCard(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Container(
-                                          width: 40,
-                                          height: 40,
-                                          decoration: BoxDecoration(
-                                            color: AppColors.teal,
-                                            borderRadius: BorderRadius.circular(
-                                              16,
-                                            ),
-                                          ),
-                                          alignment: Alignment.center,
-                                          child: const Icon(
-                                            Icons.campaign_rounded,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                        const Gap(14),
-                                        Expanded(
-                                          child: Column(
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: AppButton(
+                                    label: 'Mark All Read',
+                                    expanded: false,
+                                    variant: AppButtonVariant.outline,
+                                    onPressed: () =>
+                                        _markAllAsRead(visibleMessages),
+                                  ),
+                                ),
+                                const Gap(10),
+                                Expanded(
+                                  child: AppButton(
+                                    label: 'Clear',
+                                    expanded: false,
+                                    variant: AppButtonVariant.ghost,
+                                    onPressed: () =>
+                                        _clearAllNotifications(visibleMessages),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const Gap(16),
+                            ...List.generate(visibleMessages.length, (index) {
+                              final item = visibleMessages[index];
+                              final isUnread = !_readIds.contains(item.id);
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: () => _openCohortMessage(item),
+                                    borderRadius: BorderRadius.circular(28),
+                                    child: AppCard(
+                                      radius: 28,
+                                      color: isUnread
+                                          ? AppColors.deepBlue.withValues(
+                                              alpha: 0.04,
+                                            )
+                                          : null,
+                                      border: Border.all(
+                                        color: isUnread
+                                            ? AppColors.teal.withValues(
+                                                alpha: 0.26,
+                                              )
+                                            : AppColors.deepBlue.withValues(
+                                                alpha: 0.06,
+                                              ),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
                                             crossAxisAlignment:
                                                 CrossAxisAlignment.start,
                                             children: [
-                                              Text(
-                                                item.title,
-                                                style: Theme.of(context)
-                                                    .textTheme
-                                                    .titleMedium
-                                                    ?.copyWith(
-                                                      fontWeight:
-                                                          FontWeight.w800,
-                                                    ),
+                                              Container(
+                                                width: 44,
+                                                height: 44,
+                                                decoration: BoxDecoration(
+                                                  gradient: isUnread
+                                                      ? AppGradients.primary
+                                                      : AppGradients.accent,
+                                                  borderRadius:
+                                                      BorderRadius.circular(16),
+                                                ),
+                                                alignment: Alignment.center,
+                                                child: Icon(
+                                                  isUnread
+                                                      ? Icons
+                                                            .mark_chat_unread_rounded
+                                                      : Icons.drafts_rounded,
+                                                  color: Colors.white,
+                                                ),
                                               ),
-                                              const Gap(6),
-                                              Text(
-                                                item.body,
-                                                style: Theme.of(context)
-                                                    .textTheme
-                                                    .bodyMedium
-                                                    ?.copyWith(
-                                                      color: AppColors
-                                                          .mutedForeground,
-                                                      height: 1.5,
+                                              const Gap(14),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Row(
+                                                      children: [
+                                                        Expanded(
+                                                          child: Text(
+                                                            item.title,
+                                                            style: Theme.of(context)
+                                                                .textTheme
+                                                                .titleMedium
+                                                                ?.copyWith(
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w800,
+                                                                ),
+                                                          ),
+                                                        ),
+                                                        Container(
+                                                          padding:
+                                                              const EdgeInsets.symmetric(
+                                                                horizontal: 10,
+                                                                vertical: 6,
+                                                              ),
+                                                          decoration: BoxDecoration(
+                                                            color: isUnread
+                                                                ? AppColors
+                                                                      .orange
+                                                                      .withValues(
+                                                                        alpha:
+                                                                            0.14,
+                                                                      )
+                                                                : AppColors.teal
+                                                                      .withValues(
+                                                                        alpha:
+                                                                            0.14,
+                                                                      ),
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  999,
+                                                                ),
+                                                          ),
+                                                          child: Text(
+                                                            isUnread
+                                                                ? 'New'
+                                                                : 'Read',
+                                                            style: Theme.of(context)
+                                                                .textTheme
+                                                                .labelSmall
+                                                                ?.copyWith(
+                                                                  color:
+                                                                      isUnread
+                                                                      ? AppColors
+                                                                            .orange
+                                                                      : AppColors
+                                                                            .teal,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w800,
+                                                                ),
+                                                          ),
+                                                        ),
+                                                      ],
                                                     ),
+                                                    const Gap(6),
+                                                    Text(
+                                                      item.body,
+                                                      maxLines: 3,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: Theme.of(context)
+                                                          .textTheme
+                                                          .bodyMedium
+                                                          ?.copyWith(
+                                                            color: AppColors
+                                                                .mutedForeground,
+                                                            height: 1.5,
+                                                          ),
+                                                    ),
+                                                  ],
+                                                ),
                                               ),
                                             ],
                                           ),
-                                        ),
-                                      ],
-                                    ),
-                                    const Gap(8),
-                                    Row(
-                                      children: [
-                                        Text(
-                                          'Tap to open',
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .labelSmall
-                                              ?.copyWith(
+                                          const Gap(14),
+                                          Row(
+                                            children: [
+                                              Icon(
+                                                Icons.schedule_rounded,
+                                                size: 16,
                                                 color:
                                                     AppColors.mutedForeground,
                                               ),
-                                        ),
-                                        const Gap(12),
-                                        const Icon(
-                                          Icons.chevron_right_rounded,
-                                          color: AppColors.mutedForeground,
-                                        ),
-                                      ],
-                                    ),
-                                    if (item.hasCta) ...[
-                                      const Gap(14),
-                                      AppButton(
-                                        label: item.ctaLabel,
-                                        expanded: false,
-                                        onPressed: () =>
-                                            _openCohortMessageUrl(item.ctaUrl),
+                                              const Gap(6),
+                                              Text(
+                                                MaterialLocalizations.of(
+                                                  context,
+                                                ).formatShortDate(
+                                                  item.createdAt,
+                                                ),
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .labelMedium
+                                                    ?.copyWith(
+                                                      color: AppColors
+                                                          .mutedForeground,
+                                                    ),
+                                              ),
+                                              const Spacer(),
+                                              Text(
+                                                item.hasCta
+                                                    ? 'Open update'
+                                                    : 'View details',
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .labelMedium
+                                                    ?.copyWith(
+                                                      color: AppColors.teal,
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                    ),
+                                              ),
+                                              const Gap(8),
+                                              const Icon(
+                                                Icons.arrow_forward_rounded,
+                                                color: AppColors.teal,
+                                                size: 18,
+                                              ),
+                                            ],
+                                          ),
+                                        ],
                                       ),
-                                    ],
-                                  ],
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            );
-                          },
+                              );
+                            }),
+                          ],
                         ),
                 ),
               ],

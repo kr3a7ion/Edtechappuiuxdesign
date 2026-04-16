@@ -42,6 +42,8 @@ class PaymentRepository {
     required PaymentFlowKind kind,
     required int weeks,
     required int amount,
+    required int baseAmount,
+    required int weeklyRate,
     required String reference,
   }) {
     return _firebaseFirestore.collection('users').doc(uid).set({
@@ -50,6 +52,8 @@ class PaymentRepository {
         'status': 'Pending',
         'weeks': weeks,
         'amount': amount,
+        'baseAmount': baseAmount,
+        'weeklyRate': weeklyRate,
         'reference': reference,
         'createdAt': FieldValue.serverTimestamp(),
       },
